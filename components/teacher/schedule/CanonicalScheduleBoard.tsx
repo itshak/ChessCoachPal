@@ -2,13 +2,15 @@
 
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
-import {useMemo,useState} from "react";
+import {useMemo,useState,useRef,useEffect} from "react";
+import {calendarCopy,calendarDates,calendarHref,calendarRange,type CalendarView} from "./calendar-view";
+import "./calendar-layout.css";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {useToast} from "@/components/ui/toast";
 import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
-import {addDays,toLocalDateString,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
+import {toLocalDateString,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string;localToday:string};
@@ -41,9 +43,9 @@ async function jsonResponse(res:Response){
  * participant, and all writes use the exact website/MCP domain operations.
  */
 export function CanonicalScheduleBoard({
- weekStart,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
+ weekStart,rangeEnd,anchorDate,view,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
 }:{
- weekStart:string;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
+ weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
  workplaceTimezones:Readonly<Record<string,string>>;
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
@@ -52,6 +54,10 @@ export function CanonicalScheduleBoard({
  const t=useTranslations("calendar");
  const toUserError=useLocalizedApiError();
  const uiLocale=useLocale();
+ const words=calendarCopy(uiLocale);
+ const range=calendarRange(anchorDate,view);
+ const origin=useRef<{scroll:number;focus:HTMLElement|null}|null>(null);
+ const detailRef=useRef<HTMLDivElement>(null);
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
  const [tab,setTab]=useState<"attendance"|"notes"|"schedule">("attendance");
  const [moveDate,setMoveDate]=useState(today);
@@ -80,7 +86,16 @@ export function CanonicalScheduleBoard({
  const [addTime,setAddTime]=useState("16:00");
  const [addDuration,setAddDuration]=useState(60);
  const [addHomeVisit,setAddHomeVisit]=useState(false);
- const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+ const days=useMemo(()=>calendarDates(weekStart,rangeEnd),[weekStart,rangeEnd]);
+ const openId=open?.id;
+ useEffect(()=>{
+  if(openId&&window.matchMedia("(max-width:799px)").matches){window.scrollTo(0,0);detailRef.current?.focus();}
+ },[openId]);
+ function closeDetail(){
+  setOpen(null);
+  const previous=origin.current;origin.current=null;
+  if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
+ }
  const byDay=useMemo(()=>{
   const daysMap=new Map<string,CanonicalCalendarRow[]>();
   for(const session of sessions){
@@ -111,6 +126,7 @@ export function CanonicalScheduleBoard({
   setEmailContacts(false);
  }
  async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"|"schedule"){
+  if(!open)origin.current={scroll:window.scrollY,focus:document.activeElement instanceof HTMLElement?document.activeElement:null};
   setBusy(true);
   try{
    const path="/api/coaching/sessions/"+session.id;
@@ -268,14 +284,26 @@ export function CanonicalScheduleBoard({
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
- return <div className="space-y-5">
-  <div className="flex flex-wrap gap-3 items-center justify-between">
-   <div className="flex gap-3 items-center">
-    <Link className="text-primary hover:underline" href={"/schedule?week="+addDays(weekStart,-7)}>{t("previous")}</Link>
-    <span className="text-sm font-medium">{weekStart} – {addDays(weekStart,6)}</span>
-    <Link className="text-primary hover:underline" href={"/schedule?week="+addDays(weekStart,7)}>{t("next")}</Link>
-    <Link className="text-primary hover:underline" href="/schedule">{t("today")}</Link>
+ return <div className="space-y-5 ccp-calendar" data-detail-open={!!open}>
+  <div className="ccp-calendar-controls flex flex-wrap gap-3 items-center justify-between">
+   <div className="flex flex-wrap gap-3 items-center">
+    <Link className="text-primary hover:underline" href={calendarHref(range.previous,view)}>{t("previous")}</Link>
+    <span className="font-medium"><bdi>{weekStart} – {rangeEnd}</bdi></span>
+    <Link className="text-primary hover:underline" href={calendarHref(range.next,view)}>{t("next")}</Link>
+    <Link className="text-primary hover:underline" href={calendarHref(today,view)}>{t("today")}</Link>
    </div>
+   <nav aria-label={words.view} className="flex flex-wrap gap-2">
+    {(["agenda","week","month","day"] as const).map(mode=><Link key={mode}
+      aria-current={view===mode?"page":undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
+      href={calendarHref(anchorDate,mode)}>{words[mode]}</Link>)}
+   </nav>
+   <form method="get" action="/schedule" className="flex flex-wrap gap-2 items-center">
+    {view!=="auto"&&<input type="hidden" name="view" value={view}/>}
+    <label className="flex flex-wrap gap-2 items-center">{words.date}
+     <input className="rounded border border-border px-2 py-1" name="week" type="date" min="1900-01-01" max="9998-12-31" defaultValue={anchorDate} required/>
+    </label>
+    <button className="text-primary underline" type="submit">{t("date")}</button>
+   </form>
    <button className="rounded-lg border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/10"
     onClick={()=>{
       if(!addOpen){
@@ -284,7 +312,7 @@ export function CanonicalScheduleBoard({
       setAddOpen(!addOpen);
     }}>+ {t("privateSessionButton")}</button>
   </div>
-  {addOpen&&<div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+  {addOpen&&<div className="ccp-calendar-controls rounded-xl border border-border bg-surface p-4 space-y-3">
    <h3 className="font-medium">{t("individualLesson")}</h3>
    <div className="grid sm:grid-cols-3 gap-3">
     <label className="text-sm">{t("student")}
@@ -322,22 +350,28 @@ export function CanonicalScheduleBoard({
    <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground text-sm"
     disabled={busy} onClick={addPrivateSession}>{t("createSession")}</button>
   </div>}
-  <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-   {days.map((date,i)=><div key={date} data-calendar-date={date} className={
-    "min-h-28 rounded-xl border p-2 "+
+  <div className="ccp-calendar-workspace">
+  <div className="ccp-calendar-list" data-view={view}>
+   {days.map(date=><div key={date} data-calendar-date={date} data-empty={!byDay.get(date)?.length&&!events.some(e=>e.localDate===date)} className={
+    "ccp-calendar-day min-w-0 border-b border-border p-2 "+
      (date===today?"border-primary/60 bg-primary/5":"border-border bg-surface")
    }>
-    <div className="text-xs font-semibold mb-3">{t((["sun","mon","tue","wed","thu","fri","sat"] as const)[i])} {date.slice(5)}</div>
+    <Link href={calendarHref(date,"day")} className="block font-semibold mb-2 hover:underline">
+     {new Intl.DateTimeFormat(uiLocale,{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(date+"T12:00:00Z"))}
+    </Link>
+    <span className="ccp-calendar-mobile-count">{(byDay.get(date)?.length??0)+events.filter(e=>e.localDate===date).length}</span>
     {events.filter(e=>e.localDate===date).map(e=><Link key={e.id} href={"/events/"+e.id}
       className="block rounded-lg border border-accent/40 bg-accent/10 p-2 text-xs mb-2">
       <b>{t("event")}</b> {e.title}
     </Link>)}
     {(byDay.get(date)??[]).map(session=><div key={session.id}
-      className="rounded-lg border border-border bg-background p-2 text-xs mb-2 space-y-1">
-      <div className="font-medium">{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</div>
-      <div className="text-foreground break-all">{session.participants.map(p=>p.name).join(", ")}</div>
+      className="ccp-calendar-record border-b border-border p-2 mb-2 space-y-1 min-w-0">
+      <button className="block text-start font-medium hover:underline w-full [overflow-wrap:anywhere]" disabled={busy} onClick={()=>openSession(session,"attendance")} aria-pressed={open?.id===session.id}>
+       <bdi>{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</bdi>{" · "}<bdi dir="auto">{session.title}</bdi>
+      </button>
+      <div className="text-foreground [overflow-wrap:anywhere]">{session.participants.map(p=>p.name).join(", ")}</div>
       <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 text-sm">
        <button id={"lesson-attendance-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
        <button id={"lesson-notes-"+session.id} disabled={busy} className="text-primary hover:underline"
@@ -348,15 +382,16 @@ export function CanonicalScheduleBoard({
       </div>
      </div>)}
    </div>)}
+  {!sessions.length&&!events.length&&<p className="p-3" role="status">{words.empty}</p>}
   </div>
-  {open&&<div role="dialog" aria-modal="true" aria-label={t("teachingSessionDetails")}
-    className="rounded-xl border border-border bg-surface p-5 space-y-4">
+  {open&&<div ref={detailRef} tabIndex={-1} role="dialog" aria-label={t("teachingSessionDetails")}
+    className="ccp-calendar-detail min-w-0 border border-border bg-surface p-4 space-y-4">
    <div className="flex justify-between gap-2">
     <div>
      <h2 className="font-semibold break-all">{open.title}</h2>
      <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone)}</p>
     </div>
-    <button className="text-primary hover:underline text-sm" onClick={()=>setOpen(null)}>{t("close")}</button>
+    <button className="text-primary hover:underline text-sm" onClick={closeDetail}>{t("close")}</button>
    </div>
    <div className="flex gap-3 border-b border-border">
     {(["attendance","notes","schedule"] as const).map(x=><button key={x}
@@ -477,5 +512,6 @@ export function CanonicalScheduleBoard({
     </div>
    </div>}
   </div>}
+ </div>
  </div>;
 }
