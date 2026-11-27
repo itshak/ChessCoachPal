@@ -130,6 +130,20 @@ type SessionDiscoveryRow=Pick<Database["public"]["Tables"]["teaching_sessions"][
   "id"|"title"|"starts_at"|"duration_minutes"|"lesson_note"|"status"|
   "workplace_id"|"group_id"|"student_id"|"local_timezone"> & {venue:{timezone:string}|null};
 
+/** Exact owned lesson record, shared by the browser inspector and MCP. */
+export async function sessionsDetails(db:Db,teacherId:string,sessionId:string){
+ const {data,error}=await db.from("teaching_sessions")
+  .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at,"+
+   "local_timezone,venue:workplaces!teaching_sessions_workplace_id_teacher_id_fkey(timezone)")
+  .eq("teacher_id",teacherId).eq("id",sessionId).maybeSingle()
+  .overrideTypes<(SessionDiscoveryRow & {updated_at:string})|null,{merge:false}>();
+ if(error)throw new CoachError("DATABASE_ERROR",500,"Lesson lookup failed");
+ if(!data)return null;
+ const {local_timezone,venue,...session}=data;
+ return {...session,sessionTimeZone:local_timezone||venue?.timezone||"UTC",
+  participants:await sessionsParticipants(db,teacherId,sessionId)};
+}
+
 export async function sessionsList(db: Db, teacherId: string, workplaceId?:string|null) {
   if(workplaceId){
     const owned=await db.from("workplaces").select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();

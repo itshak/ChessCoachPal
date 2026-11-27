@@ -5,8 +5,8 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 import {planCanonicalOccurrences,type CanonicalSlot} from "../lib/server/canonical-calendar-service";
 
-test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
-  test.setTimeout(120_000);
+test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
+  test.setTimeout(180_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const options={auth:{persistSession:false,autoRefreshToken:false}};
   const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,options);
@@ -105,6 +105,13 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     await page.goto("/dashboard");
     const queue=page.getByRole("region",{name:"Coaching today"});
     await expect(queue.getByLabel("Coaching date")).toHaveValue(fmt.format(new Date()));
+    const agenda=page.locator("[data-home-agenda]");
+    await expect(agenda.locator('[data-next-lesson="true"]')).toContainText(prefix+"before midnight");
+    await expect(agenda.getByText("Next lesson",{exact:true})).toBeVisible();
+    await expect(agenda.locator("[data-agenda-date]")).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"canceled",{exact:true})).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"other school",{exact:true})).toHaveCount(0);
+    await page.screenshot({path:testInfo.outputPath("adaptive-home-desktop.png"),fullPage:true});
     await queue.getByLabel("Coaching date").fill(date);
     await queue.getByRole("button",{name:"Show lessons"}).click();
     await expect(page).toHaveURL(new RegExp("date="+date));
@@ -143,6 +150,65 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     expect(ids(await read("?date="+date,{date}))).toEqual([first,middle1,middle2,occurrence.data!.id,last]);
     expect((await signed.from("teaching_sessions").select("id").eq("slot_id",slotId)).data)
       .toEqual([{id:occurrence.data!.id}]);
+
+    const originalViewport=page.viewportSize();
+    await page.setViewportSize({width:1440,height:900});
+    await page.goto("/schedule?week="+date+"&view=week");
+    const attendanceButton=page.locator("#lesson-attendance-"+occurrence.data!.id);
+    await expect(attendanceButton).toBeVisible();
+    const weekUrl=page.url();
+    const record=page.locator('[data-calendar-session="'+occurrence.data!.id+'"] > button').first();
+    await record.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("link",{name:"Daily schedule pupil",exact:true})).toBeVisible();
+    expect(page.url()).toBe(weekUrl);
+    await page.screenshot({path:testInfo.outputPath("calendar-desktop.png"),fullPage:true});
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await page.setViewportSize({width:820,height:1100});
+    await page.screenshot({path:testInfo.outputPath("calendar-tablet.png"),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.goto("/schedule?week="+date);
+    const list=page.locator('.ccp-calendar-list[data-view="auto"]');
+    await expect(list).toBeVisible();
+    const mobileUrl=page.url();
+    await record.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await expect(page).toHaveURL(new RegExp("#calendar-detail-"+occurrence.data!.id+"$"));
+    await page.screenshot({path:testInfo.outputPath("calendar-mobile-detail.png"),fullPage:true});
+    await page.goBack();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(mobileUrl);
+    await expect(record).toBeFocused();
+    await page.goForward();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(mobileUrl);
+    await page.getByRole("navigation",{name:"Calendar view"}).getByRole("link",{name:"Month",exact:true}).click();
+    await expect(page).toHaveURL(/view=month/);
+    await page.locator('[data-calendar-date="'+date+'"] > a').first().click();
+    await expect(page).toHaveURL(/view=day/);
+    await expect(attendanceButton).toBeVisible();
+    for(const [locale,heading,month] of [["he","בית","חודש"],["ru","Главная","Месяц"]]){
+      expect((await tool("ccp_teacher_profile_update",{preferredLocale:locale,confirmed:true})).error).toBeUndefined();
+      await page.goto("/dashboard");
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      if(locale==="he")await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+      await expect(page.getByRole("heading",{name:heading,exact:true})).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("adaptive-home-"+locale+"-mobile.png"),fullPage:true});
+      await page.goto("/schedule?week="+date);
+      await expect(page.getByRole("link",{name:month,exact:true})).toBeVisible();
+      await record.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("calendar-"+locale+"-mobile.png"),fullPage:true});
+    }
+    expect((await tool("ccp_teacher_profile_update",{preferredLocale:"en",confirmed:true})).error).toBeUndefined();
+    if(originalViewport)await page.setViewportSize(originalViewport);
 
     const movedId=await lesson("moved actual",tomorrow+"T12:00:00Z",{group_id:null,student_id:pupil});
     const revision=await signed.from("teaching_sessions").select("updated_at").eq("id",movedId).single();

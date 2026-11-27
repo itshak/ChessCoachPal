@@ -209,6 +209,35 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  const roster=await page.request.get("/api/coaching/sessions/"+ctx.sessionId+"/roster");
  expect(roster.status()).toBe(200);
  const persons=(await roster.json()).participants as Array<{studentId:string;name:string}>;
+ // The UI may retain a draft only for the exact selected session and its
+ // revision. Switching must not carry note or approval to another learner.
+ const detailBefore=await call("ccp_sessions_details",{sessionId:ctx.sessionId});
+ expect(detailBefore.error).toBeUndefined();
+ const second=await call("ccp_sessions_create",{
+  workplaceId:ctx.workplaceId,studentId:ctx.studentIds[0],title:name("Draft isolation"),
+  startsAt:new Date(Date.parse(detailBefore.data.starts_at)+2*86400000).toISOString(),
+  durationMinutes:45,idempotencyKey:randomUUID(),
+ });
+ expect(second.error).toBeUndefined();
+ const secondId=second.data.entityId as string;
+ await panel.getByRole("button",{name:"Refresh lessons"}).click();
+ const draftNote="Unsaved synthetic draft for exact group";
+ const note=selected.locator("textarea").first();
+ await note.fill(draftNote);
+ await selected.locator('select[data-student-id="'+persons[0].studentId+'"]').selectOption("late");
+ await panel.getByLabel("Lesson to complete").selectOption(secondId);
+ const other=panel.locator('form[data-session-id="'+secondId+'"]');
+ await expect(other).toBeVisible();
+ await expect(other.locator("textarea").first()).toHaveValue("");
+ await panel.getByLabel("Lesson to complete").selectOption(ctx.sessionId);
+ await expect(selected).toBeVisible();
+ await expect(note).toHaveValue(draftNote);
+ await expect(selected.locator('select[data-student-id="'+persons[0].studentId+'"]')).toHaveValue("late");
+ await expect(panel.getByRole("button",{name:"Complete lesson"})).toBeDisabled();
+ const noWrite=await call("ccp_attendance_preview",{sessionId:ctx.sessionId});
+ expect(noWrite.data.attendance.every((row:{status:string})=>row.status==="unmarked")).toBe(true);
+ await note.fill("");
+
  for(const person of persons)
   await selected.locator('select[data-student-id="'+person.studentId+'"]').selectOption("present");
  await panel.getByText("I confirm these attendance statuses and lesson completion.").click();
@@ -220,6 +249,28 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  expect(details.data.lesson_note).toBe("Original teacher note stays unless explicitly changed");
  const attendance=await call("ccp_attendance_preview",{sessionId:ctx.sessionId});
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
+ expect(details.data.sessionTimeZone).toBe("UTC");
+ const noteInput={sessionId:ctx.sessionId,studentId:ctx.studentIds[0],
+  body:"Synthetic contact-shareable note",privateBody:"Synthetic private lesson observation",
+  sharedWithContacts:false,sendEmail:false,expectedUpdatedAt:null,idempotencyKey:randomUUID(),confirmed:true};
+ const noteSaved=await call("ccp_session_notes_save",noteInput);
+ expect(noteSaved.error).toBeUndefined();
+ const redacted=await call("ccp_session_notes_list",{sessionId:ctx.sessionId});
+ expect(redacted.error).toBeUndefined();
+ expect(JSON.stringify(redacted.data)).not.toContain(noteInput.privateBody);
+ await page.goto("/coaching/lessons/"+ctx.sessionId);
+ await expect(page.getByRole("heading",{name:details.data.title,exact:true})).toBeVisible();
+ await expect(page.locator("article header")).toContainText("Completed");
+ const participants=page.getByRole("region",{name:"Session attendance"});
+ await expect(participants.getByRole("listitem")).toHaveCount(2);
+ await expect(participants.getByText("Present",{exact:true})).toHaveCount(2);
+ await expect(page.getByText("Original teacher note stays unless explicitly changed",{exact:true})).toBeVisible();
+ await expect(page.getByText(noteInput.body,{exact:true})).toBeVisible();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toHaveCount(0);
+ await page.getByRole("button",{name:"Show teacher-private notes"}).click();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toBeVisible();
+ await page.getByRole("button",{name:"Hide teacher-private notes"}).click();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toHaveCount(0);
 });
 
 test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and direct RLS completion",async({page,request})=>{

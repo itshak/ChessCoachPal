@@ -1191,6 +1191,10 @@
     }
   },
   "studentDetail": {
+    "nextLesson": "Next scheduled lesson",
+    "nextWindow": "Current workplace context · next 30 days · persisted sessions only",
+    "nextNone": "No scheduled lesson found in this window.",
+    "nextUnavailable": "The next lesson could not be verified in this window.",
     "learnerEvidenceLink": "Lesson and import evidence",
     "student": "Student",
     "back": "Students",
@@ -2241,6 +2245,15 @@
     "qrAlt": "Payment QR code"
   },
   "lessonHistory": {
+    "showPrivate": "Show teacher-private notes",
+    "hidePrivate": "Hide teacher-private notes",
+    "noteMarked": "Marked for scoped contact sharing",
+    "noteNotMarked": "Not marked for contact sharing",
+    "sessionWide": "Whole lesson",
+    "notesUnavailable": "Lesson notes are unavailable.",
+    "loadedSearch": "Search loaded lessons",
+    "loadedFilter": "Filters apply to loaded records only; totals cover the full date range.",
+    "showAll": "All statuses",
     "workplacesUnavailable": "Workplaces unavailable",
     "invalidRange": "End date precedes start date",
     "loadError": "Unable to load teaching history",
@@ -2564,6 +2577,9 @@
     }
   },
   "lessonCompletion": {
+    "draftRestored": "Unsaved attendance and note restored. Review again before saving.",
+    "draftChanged": "The recorded roster or attendance changed. The earlier draft was not applied.",
+    "draftLocal": "Unsaved edits stay in this workspace while switching lessons. Review again before saving.",
     "combinedHeading": "Optional taught material",
     "combinedUseMaterial": "Record taught material together with this lesson",
     "combinedSearchLabel": "Search active materials by title",
