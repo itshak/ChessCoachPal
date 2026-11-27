@@ -25,3 +25,9 @@
 - [ ] Run actual OpenSpec strict validation and record exact candidate evidence; do not claim pass from document inspection.
 - [ ] Operator approve proposed domain/physical approach and designate single schema owner; reconcile stale #223 before candidate work.
 - [ ] Review exact successor separately under ADR-0020; no protected files modified by this proposal.
+
+## 0b. Follow-up review
+- [x] Compare #223 settlement function text and fixture blob against main and verify ADR-0035 corrected candidate ancestry; recommend operator disposition.
+- [x] Clarify restore conflict resolution, SQL-authoritative name normalization, token/replay boundaries and active-only interactive import; full restore remains separate.
+- [ ] Verify exact ICU normalization behavior and canonical backup/restore integration on approved isolated candidate.
+- [ ] Run strict OpenSpec CLI on reviewed head; previous CI runs do not run that command.

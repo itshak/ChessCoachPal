@@ -25,3 +25,11 @@ Suggested synthetic tests: e2e/parity-material-library.spec.ts; separate SQL fix
 
 ## UI handoff
 Desktop: tree disclosure, virtual All/Uncategorized/Archived plus searchable list and material inspector, no compulsory fourth pane; visible direct/descendant switch, membership chips with paths, evidence history separately labeled, stable ID links. Tablet collapsible tree, mobile drilldown with breadcrumbs and back stack preserving filters/scroll; tree nodes keyboard navigable, rename/move via menus/dialogs, no drag dependency. Show archive impact and restore conflicts, stale revision refresh/retry (never silently overwrite), template preview/edit and suggestions as optional actions, not setup gate. Existing Lichess tab stays independent; no provider mutation. Coordinate with design-system and lesson-workspace owners before production integration; no UI implementation in this PR.
+
+## Additional boundary cases from follow-up review
+
+- Test canonical normalization on real PostgreSQL 17 with deterministic ICU root collation and recorded version; NFC composed/decomposed equivalence, root case mapping for Latin and Cyrillic, ß versus ss distinct, Hebrew preserved, specified whitespace, reject controls, fail closed if collation changes. Do not claim full Unicode casefold.
+- Restore archived root with occupied former sibling name and moved former parent: review explicit root name/destination and descendant rename map; one atomic success, no independent edits to archived objects, no partial restoration. Re-review if destination changes.
+- Exact committed retry after preview expiry succeeds with original receipt; expired first execution, changed token, wrong actor, changed digest, revoked grant and direct SQL attempted bypass fail. Re-read current state independently.
+- Interactive import of an archived row rejects without writes; full authorized canonical restore preserves archive batches and membership. Check mapping-only existing targets cannot rename/reparent them and subsequent chunks receive original ID mappings after lost response.
+- Verify Markdown contract table renders exactly three columns, every advertised tool name unique, normative scenarios have WHEN and THEN clauses, protected blob equality and strict OpenSpec separately.

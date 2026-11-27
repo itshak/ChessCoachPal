@@ -92,3 +92,16 @@ The system SHALL provide bounded path-aware browsing, distinct material results 
 #### Scenario: Import unresolved material reference
 - **WHEN** an import contains a material reference without an authorized exact mapping
 - **THEN** the reviewed transaction SHALL fail without partial organization writes.
+
+### Requirement: Explicit restoration conflict resolution
+The system SHALL permit explicit review of replacement names or destinations when restoring an archived subtree and SHALL NOT silently rename, reparent or restore separately archived descendants.
+
+#### Scenario: Original name occupied during archive
+- **WHEN** an active sibling occupies an archived root's former name and the teacher reviews a valid alternate name or destination
+- **THEN** the approved resolution and batch restoration SHALL commit atomically
+- **AND** an unreviewed or stale resolution SHALL leave all records unchanged.
+
+#### Scenario: Replay a completed approved change after preview expiry
+- **WHEN** an authorized caller retries exactly the committed request after preview expiry
+- **THEN** the original receipt SHALL be returned without another write
+- **AND** an expired preview with no committed receipt SHALL be rejected.

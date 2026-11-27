@@ -26,3 +26,5 @@ Latest inspected main 35413fa: existing flat skill categories and typed material
 
 ## Review refinements
 The concrete proposed physical model, bounds, lock order, archive batches, normalization, import mapping and change-control sequence are in [schema-review.md](schema-review.md); exact proposed shared tool inputs/results in [mcp-contracts.md](mcp-contracts.md). These refine the earlier candidate design and control in case of ambiguity. No physical change approved. See [acceptance.md](acceptance.md) for UI handoff and test matrix.
+
+Follow-up clarification: canonical name key uses SQL-authoritative NFC and deterministic ICU root lowercase, not full casefold. Archived conflict resolution is part of the reviewed restore operation (not a prior edit of an archived collection). Interactive import handles active organization only; archived history is preserved by full canonical backup/restore. See the detailed review contracts for bounded inputs, output and replay behavior.
