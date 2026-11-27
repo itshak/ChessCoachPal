@@ -30,6 +30,10 @@ type Decision={studentId:string;status:""|"present"|"absent"|"late"|"excused";
  note:string;expectedUpdatedAt:string|null};
 const select="w-full min-w-0 max-w-full rounded-lg border border-border bg-surface px-3 py-2 min-h-11 text-base text-foreground";
 const statuses=["present","absent","late","excused"] as const;
+type LocalDraft={revision:string;decisions:Record<string,Decision>;lessonNote:string};
+function revisionOf(roster:Roster,decisions:Record<string,Decision>){
+ return JSON.stringify([roster.updatedAt,roster.participants.map(p=>[p.studentId,decisions[p.studentId]?.expectedUpdatedAt??null]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))]);
+}
 
 async function api<T>(action:string,args:Record<string,unknown>={},fallback="Unable to load lesson"):Promise<T>{
  const res=await fetch("/api/agent/v1",{
@@ -66,6 +70,15 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
  const [taught,setTaught]=useState<string[]>([]);
  const [review,setReview]=useState<CombinedReview|null>(null);
  const [combinedKey,setCombinedKey]=useState<string|null>(null);
+ const drafts=useRef(new Map<string,LocalDraft>());
+ const [dirty,setDirty]=useState(false);
+ const [draftNotice,setDraftNotice]=useState("");
+ // Only component-local memory. Never put learner notes in local/session storage.
+ useEffect(()=>{
+  const warn=(event:BeforeUnloadEvent)=>{if(dirty||drafts.current.size){event.preventDefault();event.returnValue="";}};
+  window.addEventListener("beforeunload",warn);
+  return ()=>window.removeEventListener("beforeunload",warn);
+ },[dirty]);
  const clearApproval=useCallback(()=>{setConfirmed(false);setReview(null);setCombinedKey(null);},[]);
 
  // A slow roster read must never replace the learner decisions for a newer
@@ -117,7 +130,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   setError("");
   const current=new Map(register.map(x=>[x.student_id,x]));
   setRoster(details);
-  setDecisions(Object.fromEntries(details.participants.map(p=>{
+  const savedDecisions=Object.fromEntries(details.participants.map(p=>{
     const r=current.get(p.studentId);
     return [p.studentId,{
      studentId:p.studentId,
@@ -126,7 +139,18 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
      note:r?.note??"",
      expectedUpdatedAt:r?.updated_at??null,
     }];
-  })));
+  }));
+  const draft=drafts.current.get(id);
+  if(draft){
+   drafts.current.delete(id);
+   if(draft.revision===revisionOf(details,savedDecisions)){
+    setDecisions(draft.decisions);setLessonNote(draft.lessonNote);setDirty(true);setDraftNotice(t("draftRestored"));
+   }else{
+    setDecisions(savedDecisions);setLessonNote("");setDirty(false);setDraftNotice(t("draftChanged"));
+   }
+  }else{
+   setDecisions(savedDecisions);
+  }
   setConfirmed(false);
  },[pinned,readExact,t,toUserError,clearApproval]);
  const refreshSessions=useCallback(async()=>{
@@ -141,7 +165,17 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   void refresh(sessionId);
  },[sessionId,refresh]);
 
+ function switchLesson(id:string){
+  if(id===sessionId||busy)return;
+  if(roster&&dirty&&roster.sessionId===sessionId){
+   drafts.current.set(sessionId,{revision:revisionOf(roster,decisions),decisions,lessonNote});
+  }
+  rosterLoad.current++;setRoster(null);setDecisions({});setSessionId(id);
+  setLessonNote("");setDirty(false);setDraftNotice("");clearApproval();setNotice("");setError("");
+ }
+
  function change(studentId:string,patch:Partial<Decision>){
+  setDirty(true);
   setDecisions(old=>({...old,[studentId]:{...old[studentId],...patch}}));
   if(patch.status==="absent"||patch.status==="excused"||patch.status==="")
    setTaught(old=>old.filter(id=>id!==studentId));
@@ -181,7 +215,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   setBusy(true);setError("");setNotice("");
   try{
    await combinedRequest("commit",{...review.proposed,requestId:combinedKey,confirmed:true});
-   setNotice(t("combinedSaved"));setRoster(null);setLessonNote("");setTaught([]);clearApproval();
+   setNotice(t("combinedSaved"));setRoster(null);setLessonNote("");setTaught([]);setDirty(false);drafts.current.delete(roster?.sessionId??"");clearApproval();
   }catch(e){
    // Unknown connection/result keeps the identical reviewed payload and key
    // for replay. A typed refusal requires a separate review.
@@ -226,6 +260,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
    }
    setNotice(complete?t("committed"):t("attendanceSaved"));
    setConfirmed(false);
+   drafts.current.delete(roster.sessionId);setDirty(!complete&&Boolean(lessonNote.trim()));setDraftNotice("");
    if(complete)setLessonNote("");
    if(pinned&&complete)setRoster(null);
    else await refresh(roster.sessionId);
@@ -247,6 +282,8 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   </header>
   {error&&<p role="alert" className="text-error">{error}</p>}
   {notice&&<p role="status" className="text-success">{notice}</p>}
+  {draftNotice&&<p role="status" className="text-muted">{draftNotice}</p>}
+  {!pinned&&<p className="text-sm text-muted">{t("draftLocal")}</p>}
   {!pinned&&<button type="button" disabled={busy} className="text-sm underline"
    onClick={()=>void refreshSessions().catch(e=>setError(String(e)))}>
    {t("refresh")}
@@ -257,9 +294,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
   </button>
   {pinned? <p>{t("exactMode")}{roster&&<>{" "}<bdi dir="auto">{roster.title}</bdi></>}</p>: <label className="block">{t("lesson")}
    <select className={select} aria-label={t("lessonToComplete")} value={sessionId}
-     onChange={e=>{rosterLoad.current++;setRoster(null);setDecisions({});
-      setSessionId(e.target.value);setLessonNote("");setConfirmed(false);
-      setNotice("");setError("");}}>
+     disabled={busy} onChange={e=>switchLesson(e.target.value)}>
     {!sessions.length&&<option value="">{t("noSessions")}</option>}
     {sessions.map(s=><option value={s.id} key={s.id}>
      {s.title} · {formatLocalizedInstantDate(s.starts_at,locale,s.sessionTimeZone)} · {statusName(s.status)}
@@ -288,7 +323,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
    })}
    <label className="block">{t("sharedNote")}
     <textarea className={select} maxLength={10000} rows={4} disabled={Boolean(pinned)&&busy} value={lessonNote}
-     onChange={e=>{setLessonNote(e.target.value);clearApproval();}}/>
+     onChange={e=>{setLessonNote(e.target.value);setDirty(true);clearApproval();}}/>
    </label>
    {pinned&&<fieldset className="rounded-lg border border-border p-3 space-y-3" disabled={busy}>
     <legend className="font-medium">{t("combinedHeading")}</legend>
