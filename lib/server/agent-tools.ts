@@ -441,7 +441,7 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_preview",
-    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB.",
+    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB. English, Hebrew and Russian labels are recognized; competing source headers require an explicit exact mapping.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
   },
   {

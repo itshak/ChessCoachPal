@@ -18,6 +18,10 @@ describe("strict historical spreadsheet field mapping",()=>{
    lessonCount:"Lesson Count",sourceTimezone:"Source timezone",
   });
  });
+ it("preserves recognized Hebrew and Russian source headers but never suggests one of multiple matches",()=>{
+  expect(suggestHistoricalMapping([" שם תלמיד ","Место работы","Дата урока","נוכחות","Attendance"]))
+   .toEqual({studentName:" שם תלמיד ",workplaceName:"Место работы",attendedOn:"Дата урока"});
+ });
  it("does not guess undefined date, period or student alias",()=>{
   expect(suggestHistoricalMapping(["Something","Another"])).toEqual({});
  });
