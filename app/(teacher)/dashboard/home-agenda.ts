@@ -40,7 +40,8 @@ export function discoverHome(rows:DiscoveryRow[]|null,now:Date,zone:string,start
  // The complete future prefix is sufficient for every future calendar window.
  // Otherwise use the established per-date queue, not an unverified partial list.
  const past=(rows??[]).filter(row=>Date.parse(row.starts_at)<instant).sort((a,b)=>-ascending(a,b));
- return {days, futureComplete, next:futureComplete?allFuture[0]??null:null,
+ const next:AgendaRow|null=futureComplete?allFuture[0]??null:null;
+ return {days, futureComplete, next,
   historyAvailable:rows!==null,historyPartial:capped,
   completed:past.filter(row=>row.status==="completed").slice(0,5),
   otherPast:past.filter(row=>row.status!=="completed").slice(0,5),
