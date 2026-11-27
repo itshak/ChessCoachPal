@@ -249,6 +249,14 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  expect(details.data.lesson_note).toBe("Original teacher note stays unless explicitly changed");
  const attendance=await call("ccp_attendance_preview",{sessionId:ctx.sessionId});
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
+ expect(details.data.sessionTimeZone).toBe("UTC");
+ await page.goto("/coaching/lessons/"+ctx.sessionId);
+ await expect(page.getByRole("heading",{name:details.data.title,exact:true})).toBeVisible();
+ await expect(page.locator("article header")).toContainText("Completed");
+ const participants=page.getByRole("region",{name:"Session attendance"});
+ await expect(participants.getByRole("listitem")).toHaveCount(2);
+ await expect(participants.getByText("Present",{exact:true})).toHaveCount(2);
+ await expect(page.getByText("Original teacher note stays unless explicitly changed",{exact:true})).toBeVisible();
 });
 
 test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and direct RLS completion",async({page,request})=>{
