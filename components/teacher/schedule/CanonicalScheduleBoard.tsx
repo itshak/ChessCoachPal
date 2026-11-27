@@ -3,7 +3,7 @@
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
 import {useMemo,useState,useRef,useEffect} from "react";
-import {calendarCopy,calendarDates,calendarHref,calendarRange,type CalendarView} from "./calendar-view";
+import {calendarCopy,calendarDates,calendarHref,calendarRange,calendarDetailHash,calendarDetailId,type CalendarView} from "./calendar-view";
 import "./calendar-layout.css";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
@@ -23,6 +23,8 @@ type NoteRow={
  id:string;student_id:string|null;body:string;private_body?:string;
  shared_with_contacts:boolean;updated_at:string;emailed_at:string|null;
 };
+type EditorTab="attendance"|"notes"|"schedule";
+type DetailTab="overview"|EditorTab;
 type Decision="present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
 const DECISIONS:Record<Decision,string>={
  present:"Present",late:"Arrived late",absent:"Absent / no-show",
@@ -58,8 +60,11 @@ export function CanonicalScheduleBoard({
  const range=calendarRange(anchorDate,view);
  const origin=useRef<{scroll:number;focus:HTMLElement|null}|null>(null);
  const detailRef=useRef<HTMLDivElement>(null);
+ const lastDetailId=useRef<string|null>(null);
+ const ownsDetailEntry=useRef(false);
+ const readSequence=useRef(0);
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
- const [tab,setTab]=useState<"attendance"|"notes"|"schedule">("attendance");
+ const [tab,setTab]=useState<DetailTab>("overview");
  const [moveDate,setMoveDate]=useState(today);
  const [moveTime,setMoveTime]=useState("16:00");
  const [moveDuration,setMoveDuration]=useState(60);
@@ -91,14 +96,70 @@ export function CanonicalScheduleBoard({
  useEffect(()=>{
   if(openId){
    if(window.matchMedia("(max-width:799px)").matches)window.scrollTo(0,0);
-   else if(window.matchMedia("(max-width:1199px)").matches)detailRef.current?.scrollIntoView({block:"nearest"});
+   else if(window.matchMedia("(max-width:1279px)").matches)detailRef.current?.scrollIntoView({block:"nearest"});
    detailRef.current?.focus({preventScroll:true});
   }
  },[openId]);
- function closeDetail(){
-  setOpen(null);
+ function restoreList(){
+  readSequence.current+=1;
+  setOpen(null);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
   const previous=origin.current;origin.current=null;
   if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
+ }
+ function closeDetail(){
+  const hasDetail=calendarDetailId(window.location.hash);
+  if(hasDetail){
+   const wasPushed=ownsDetailEntry.current;
+   ownsDetailEntry.current=false;lastDetailId.current=null;
+   if(wasPushed)window.history.back();
+   else{
+    const url=new URL(window.location.href);url.hash="";
+    window.history.replaceState(null,"",url);
+   }
+  }
+  restoreList();
+ }
+ // Browser history carries only a visible canonical UUID, never a private note
+ // or draft. Reload/Forward opens the read-only overview; Notes always requires
+ // a fresh, explicit click. Unknown/out-of-context IDs cannot select a fallback.
+ useEffect(()=>{
+  function sync(){
+   const id=calendarDetailId(window.location.hash);
+   if(id===lastDetailId.current)return;
+   const previousId=lastDetailId.current;
+   lastDetailId.current=id;ownsDetailEntry.current=false;
+   readSequence.current+=1;
+   setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+   if(id){
+    const session=sessions.find(row=>row.id===id);
+    setOpen(session??null);setTab("overview");setBusy(false);
+   }else if(previousId){
+    setOpen(null);setBusy(false);
+    const previous=origin.current;origin.current=null;
+    if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
+   }
+  }
+  const frame=requestAnimationFrame(sync);
+  window.addEventListener("popstate",sync);
+  window.addEventListener("hashchange",sync);
+  return()=>{cancelAnimationFrame(frame);window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync)};
+ },[sessions]);
+ function rememberOrigin(){
+  if(!open)origin.current={scroll:window.scrollY,focus:document.activeElement instanceof HTMLElement?document.activeElement:null};
+ }
+ function showDetail(session:CanonicalCalendarRow,section:DetailTab){
+  if(window.matchMedia("(max-width:799px)").matches&&calendarDetailId(window.location.hash)!==session.id){
+   const hash=calendarDetailHash(session.id);
+   if(calendarDetailId(window.location.hash))window.history.replaceState(null,"",hash);
+   else{window.history.pushState(null,"",hash);ownsDetailEntry.current=true;}
+   lastDetailId.current=session.id;
+  }
+  setOpen(session);setTab(section);
+ }
+ function selectSession(session:CanonicalCalendarRow){
+  rememberOrigin();readSequence.current+=1;
+  setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+  showDetail(session,"overview");
  }
  const byDay=useMemo(()=>{
   const daysMap=new Map<string,CanonicalCalendarRow[]>();
@@ -129,8 +190,9 @@ export function CanonicalScheduleBoard({
   setShareWithContacts(item?.shared_with_contacts??false);
   setEmailContacts(false);
  }
- async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"|"schedule"){
-  if(!open)origin.current={scroll:window.scrollY,focus:document.activeElement instanceof HTMLElement?document.activeElement:null};
+ async function openSession(session:CanonicalCalendarRow,section:EditorTab){
+  rememberOrigin();
+  const sequence=++readSequence.current;
   setBusy(true);
   try{
    const path="/api/coaching/sessions/"+session.id;
@@ -140,8 +202,10 @@ export function CanonicalScheduleBoard({
     path+"/notes?includePrivate=true&confirmed=true":path+"/attendance";
    const rows=section==="schedule"?[]:
     await jsonResponse(await fetch(endpoint,{cache:"no-store"}));
+   if(sequence!==readSequence.current)return;
    if(!Array.isArray(rows))throw new Error(t("invalidRegister"));
-   setOpen(session);setTab(section);
+   if(section!=="notes"){setNotes([]);setBody("");setPrivateBody("");}
+   showDetail(session,section);
    if(section==="schedule"){
     const zone=session.local_timezone||workplaceTimezones[session.workplace_id]||timezone;
     setMoveDate(toLocalDateString(new Date(session.starts_at),zone));
@@ -157,8 +221,8 @@ export function CanonicalScheduleBoard({
    }else{
     setRegister(rows as AttendanceRow[]);loadDecision(first,rows as AttendanceRow[]);
    }
-  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  }catch(e){if(sequence===readSequence.current)showToast(toUserError(e, t("saveError")),"error")}
+  finally{if(sequence===readSequence.current)setBusy(false)}
  }
  async function saveAttendance(){
   if(!open||!selectedStudent)return;
@@ -227,7 +291,7 @@ export function CanonicalScheduleBoard({
       isHomeVisit:moveHomeVisit,
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   setOpen(null);showToast(t("rescheduled"));router.refresh();
+   closeDetail();showToast(t("rescheduled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
@@ -241,7 +305,7 @@ export function CanonicalScheduleBoard({
     body:JSON.stringify({status:"cancelled",
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   setOpen(null);showToast(t("sessionCancelled"));router.refresh();
+   closeDetail();showToast(t("sessionCancelled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
@@ -370,12 +434,12 @@ export function CanonicalScheduleBoard({
       <b>{t("event")}</b> {e.title}
     </Link>)}
     {(byDay.get(date)??[]).map(session=><div key={session.id}
-      className="ccp-calendar-record border-b border-border p-2 mb-2 space-y-1 min-w-0">
-      <button className="block text-start font-medium hover:underline w-full [overflow-wrap:anywhere]" disabled={busy} onClick={()=>openSession(session,"attendance")} aria-pressed={open?.id===session.id}>
+      data-calendar-session={session.id} className="ccp-calendar-record border-b border-border p-2 mb-2 space-y-1 min-w-0">
+      <button className="block text-start font-medium hover:underline w-full [overflow-wrap:anywhere]" disabled={busy} onClick={()=>selectSession(session)} aria-pressed={open?.id===session.id}>
        <bdi>{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</bdi>{" · "}<bdi dir="auto">{session.title}</bdi>
       </button>
       <div className="text-foreground [overflow-wrap:anywhere]">{session.participants.map(p=>p.name).join(", ")}</div>
-      <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
+      <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):session.status==="scheduled"?t("scheduled"):words.unknownStatus}</div>
       <div className="ccp-calendar-row-actions flex flex-wrap gap-2 text-sm">
        <button id={"lesson-attendance-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
@@ -396,14 +460,17 @@ export function CanonicalScheduleBoard({
      <h2 className="font-semibold [overflow-wrap:anywhere]"><bdi dir="auto">{open.title}</bdi></h2>
      <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone)}</p>
     </div>
-    <button className="text-primary hover:underline text-sm" onClick={closeDetail}>{t("close")}</button>
+    <button className="text-primary hover:underline text-sm" disabled={busy} onClick={closeDetail}>{t("close")}</button>
    </div>
-   <div className="flex gap-3 border-b border-border">
-    {(["attendance","notes","schedule"] as const).map(x=><button key={x} disabled={busy}
-      className={"pb-2 capitalize text-sm "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
+   <div className="flex flex-wrap gap-3 border-b border-border">
+    <button disabled={busy} aria-pressed={tab==="overview"} className={"pb-2 "+(tab==="overview"?"border-b-2 border-primary text-primary":"text-muted")}
+      onClick={()=>selectSession(open)}>{words.overview}</button>
+    {(["attendance","notes","schedule"] as const).map(x=><button key={x} disabled={busy} aria-pressed={tab===x}
+      className={"pb-2 "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
       onClick={()=>openSession(open,x)}>{t(x)}</button>)}
    </div>
-   {tab!=="schedule"&&<label className="block text-sm">{t("frozenParticipant")}
+   {busy&&<p role="status">{words.loading}</p>}
+   {tab!=="schedule"&&tab!=="overview"&&<label className="block text-sm">{t("frozenParticipant")}
     <select className={field} value={selectedStudent} onChange={e=>{
      if(tab==="notes")loadNote(e.target.value,notes);
      else loadDecision(e.target.value,register);
@@ -411,7 +478,28 @@ export function CanonicalScheduleBoard({
      {open.participants.map(p=><option key={p.studentId} value={p.studentId}>{p.name}</option>)}
     </select>
    </label>}
-   {tab==="attendance"?<div className="space-y-3">
+   {tab==="overview"?<div className="space-y-5">
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
+     <p className="font-semibold">{open.status==="scheduled"?t("scheduled"):open.status==="completed"?t("completed"):open.status==="cancelled"?t("cancelled"):words.unknownStatus}</p>
+     <p>{t("minutes",{count:open.duration_minutes})}</p>
+    </div>
+    <div>
+     <p className="font-medium"><bdi dir="auto">{workplaces.find(w=>w.id===open.workplace_id)?.name??words.workplaceUnavailable}</bdi></p>
+     <p className="text-muted"><bdi>{open.local_timezone||workplaceTimezones[open.workplace_id]||timezone}</bdi></p>
+     {open.is_home_visit&&<p>{t("homeVisit")}</p>}
+    </div>
+    <section className="space-y-2">
+     <h3 className="font-semibold">{words.participants} <span className="text-muted">{open.participants.length}</span></h3>
+     <ul className="divide-y divide-border">
+      {open.participants.map(p=><li key={p.studentId} className="flex flex-wrap gap-2 justify-between py-3">
+       <Link className="font-medium text-primary hover:underline" href={"/students/"+p.studentId}><bdi dir="auto">{p.name}</bdi></Link>
+       <span className="text-muted">{p.attendanceStatus===null?t("unmarked"):
+        Object.prototype.hasOwnProperty.call(DECISIONS,p.attendanceStatus)?t(p.attendanceStatus as Decision):words.unknownStatus}</span>
+      </li>)}
+     </ul>
+    </section>
+    {open.status==="scheduled"&&<Link className="text-primary underline" href={"/dashboard?prepareSession="+open.id+"#lesson-preparation"}>{words.prepare}</Link>}
+   </div>:tab==="attendance"?<div className="space-y-3">
     <label className="block text-sm">{t("decision")}
      <select className={field} value={draftStatus??""}
       onChange={e=>{setDraftStatus((e.target.value||null) as Decision|null);setNotifyFamily(false)}}>
