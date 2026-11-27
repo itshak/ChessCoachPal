@@ -1101,7 +1101,7 @@ const catalogue = [
   },
   {
     name:"ccp_portal_grants_renew_preview",
-    description:"Read-only review of a later expiry for one active owned portal grant. Scope is unchanged. Renewal invalidates any old link and requires separately approved secure browser issuance.",
+    description:"Read-only review of a later expiry for one active owned portal grant. Preserve the returned exact expiresAt instant for confirmation; if explaining it to the teacher, use the teacher timezone as the website does. Scope is unchanged. Renewal invalidates any old link and requires separately approved secure browser issuance.",
     schema:portalGrantRenewPreviewSchema.extend({grantId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
