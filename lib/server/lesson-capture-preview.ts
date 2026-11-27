@@ -1,4 +1,6 @@
 import "server-only";
+import {locales,type AppLocale} from "@/i18n/locales";
+import {messagesFor} from "@/i18n/messages";
 import {teacherStudyPreferenceResolve} from "@/lib/server/teacher-study-preferences";
 import {createHash} from "node:crypto";
 import { z } from "zod";
@@ -96,6 +98,7 @@ async function ownedStudents(db: SupabaseClient, teacherId: string, includeArchi
 
 export const studentNamesResolveSchema=z.object({
  names:z.array(z.string().trim().min(1).max(120)).min(1).max(100),
+ outputLocale:z.enum(locales).optional(),
 }).strict();
 
 /** Exact owner-owned report-name and alias resolver.
@@ -104,7 +107,7 @@ export const studentNamesResolveSchema=z.object({
  */
 export async function teacherStudentNamesResolve(
  db:SupabaseClient,teacherId:string,names:string[],
- options: {includeArchived?: boolean;studentChoices?:ReadonlyMap<number,string>} = {},
+ options: {includeArchived?: boolean;studentChoices?:ReadonlyMap<number,string>;outputLocale?:AppLocale} = {},
 ){
  const parsed=studentNamesResolveSchema.parse({names});
  const input=parsed;
@@ -174,7 +177,14 @@ export async function teacherStudentNamesResolve(
     }
   }
 
- return {resolutions,issues,allResolved:issues.length===0,
+ const outputMessages=options.outputLocale?messagesFor(options.outputLocale).studentIdentityIssue:null;
+ const presentedIssues=outputMessages?issues.map(issue=>{
+  const displayMessage=issue.code==="AMBIGUOUS_STUDENT"?outputMessages.ambiguous:
+    issue.code==="DUPLICATE_STUDENT"?outputMessages.duplicate:
+    issue.code==="NOT_FOUND"?outputMessages.notFound:undefined;
+  return displayMessage?{...issue,displayMessage}:issue;
+ }):issues;
+ return {resolutions,issues:presentedIssues,allResolved:issues.length===0,
   // Nonempty studentIds means safe to commit a roster. Preserve successful
   // resolution information separately even when a duplicated alias blocks commit.
   studentIds:issues.length===0?ids:[],

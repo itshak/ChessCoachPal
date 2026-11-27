@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { delegatedTool, type TestMcpReply} from "./helpers/delegated-mcp";
+import { isolatedTeacherTest } from "./helpers/isolated-teacher";
 
 const suffix = () => randomUUID().slice(0, 8);
 type Call = (name:string,args:Record<string,unknown>)=>Promise<TestMcpReply>;
@@ -271,4 +272,61 @@ test("PARITY:PARITY-archived-exact-lesson-candidate-is-clarification-not-not-fou
   const sessions=await call("ccp_sessions_list",{query:payload.title,workplaceId});
   expect(sessions.error).toBeUndefined();
   expect(sessions.data.filter((s:{title:string})=>s.title===payload.title)).toHaveLength(0);
+});
+
+isolatedTeacherTest("PARITY: exact student resolution localizes human hints without changing owned IDs or outcomes",async({
+ page,request,isolatedTeacher,
+})=>{
+ const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+ const {tag,names,ids}=await teacherFixture(call);
+ const shared="Общий псевдоним "+tag,first="Шошана "+tag;
+ for(const [index,aliases] of [[0,[shared,first]],[1,[shared]]] as const){
+  const adjusted=await page.request.put("/api/students/"+ids[index],{data:{nameAliases:aliases}});
+  expect(adjusted.status()).toBe(200);
+ }
+ const payload={names:[shared,first,names[0],"לא רשום "+tag]};
+ const endpoint="/api/students/resolve";
+ const defaultWeb=await page.request.post(endpoint,{data:payload});
+ expect(defaultWeb.status()).toBe(200);
+ expect(defaultWeb.headers()["cache-control"]).toBe("no-store");
+ const defaultResult=await defaultWeb.json();
+ const defaultMcp=await call("ccp_students_resolve",payload);
+ expect(defaultMcp.error).toBeUndefined();
+ expect(defaultMcp.data).toEqual(defaultResult);
+ expect(defaultResult).toMatchObject({allResolved:false,studentIds:[],matchedStudentIds:[ids[0]]});
+ expect(defaultResult.issues.map((i:{code:string})=>i.code).sort()).toEqual(
+  ["AMBIGUOUS_STUDENT","DUPLICATE_STUDENT","NOT_FOUND"]);
+ expect(defaultResult.issues.find((i:{code:string})=>i.code==="AMBIGUOUS_STUDENT").candidates)
+  .toEqual(expect.arrayContaining([{id:ids[0],name:names[0]},{id:ids[1],name:names[1]}]));
+ const hints={
+  en:["More than one learner","same learner","No active learner"],
+  he:["יותר מתלמיד אחד","לאותו תלמיד","לא נמצא תלמיד פעיל"],
+  ru:["несколько учеников","одному ученику","Нет активных учеников"],
+ } as const;
+ for(const outputLocale of ["en","he","ru"] as const){
+  const input={...payload,outputLocale};
+  const response=await page.request.post(endpoint,{data:input});
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toBe("no-store");
+  const result=await response.json();
+  const fromMcp=await call("ccp_students_resolve",input);
+  expect(fromMcp.error).toBeUndefined();
+  expect(fromMcp.data).toEqual(result);
+  const hintsByCode=new Map<string,string>(result.issues.map((i:{code:string;displayMessage:string})=>[i.code,i.displayMessage]));
+  for(const [i,code] of ["AMBIGUOUS_STUDENT","DUPLICATE_STUDENT","NOT_FOUND"].entries())
+   expect(hintsByCode.get(code)).toContain(hints[outputLocale][i]);
+  const issues=result.issues.map(({displayMessage,...issue}:{[key:string]:unknown})=>{
+   expect(typeof displayMessage).toBe("string");
+   return issue;
+  });
+  expect({...result,issues}).toEqual(defaultResult);
+ }
+ const invalid={...payload,outputLocale:"es"};
+ const invalidWeb=await page.request.post(endpoint,{data:invalid});
+ expect(invalidWeb.status()).toBe(400);
+ expect(await invalidWeb.json()).toMatchObject({code:"VALIDATION_ERROR"});
+ expect((await call("ccp_students_resolve",invalid)).error?.code).toBe("VALIDATION_ERROR");
+ expect((await call("ccp_students_resolve",payload)).data).toEqual(defaultResult);
+ const resolved=await call("ccp_students_resolve",{names:[first],outputLocale:"ru"});
+ expect(resolved.data).toMatchObject({allResolved:true,studentIds:[ids[0]],issues:[]});
 });

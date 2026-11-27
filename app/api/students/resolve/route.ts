@@ -14,7 +14,7 @@ export async function POST(request:NextRequest){
   error:"Invalid exact-name resolution request",code:"VALIDATION_ERROR",
  },{status:400});
  try {
-  const result=await teacherStudentNamesResolve(db,user.id,parsed.data.names);
+  const result=await teacherStudentNamesResolve(db,user.id,parsed.data.names,{outputLocale:parsed.data.outputLocale});
   return NextResponse.json(result,{headers:{"Cache-Control":"no-store"}});
  }catch(error){
   return NextResponse.json({
