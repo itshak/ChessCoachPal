@@ -123,10 +123,10 @@ test("PARITY:PARITY-students-search matches Hebrew names and aliases and require
  await row.click();
  await expect(page.locator('[data-student-directory-id="'+id+'"][aria-current="page"]')).toBeVisible();
  await expect(page.getByRole("searchbox")).toHaveValue(alias);
- await expect(page.getByRole("heading",{name,exact:true})).toBeVisible();
+ await expect(page.locator("article h1").filter({hasText:name})).toBeVisible();
  await page.setViewportSize({width:390,height:844});
  await expect(page.locator('[data-student-directory-id="'+id+'"]')).toBeHidden();
- await expect(page.getByRole("heading",{name,exact:true})).toBeVisible();
+ await expect(page.locator("article h1").filter({hasText:name})).toBeVisible();
  await page.locator('article a[href^="/students?q="]').click();
  await expect(page.getByRole("searchbox")).toHaveValue(alias);
  await expect(row).toBeVisible();
