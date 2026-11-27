@@ -30,3 +30,7 @@
 **Sequence:** Workplace Context is source accepted. Continue one feature proposal at a time according to dependencies and verified acceptance evidence. Federation identity and official rating evidence precede automated online refresh. Update the same web/MCP service, verify authenticated parity, and archive individual proposals only after their source merges and tests. File a reviewed ADR for any unexpected physical schema need instead of editing the locked baseline.
 
 **Scope:** centrally operated SaaS under [ADR-0018](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md), teacher UUID tenant with SQL and shared-domain controls, one operator-managed schema, MCP-first parity under ADR-0003, no pre-v1 compatibility layer, no automatic release.
+
+## New proposed change — schema review required
+
+- [Teacher-owned material library constructor](2026-11-27-organize-teacher-owned-material-library/proposal.md): customizable nested collections, optional editable starter structures, multi-placement, local Lichess organization and MCP parity. Unexpected post-freeze schema need; separate ADR review required before implementation. Not part of the eleven previously tracked no-planned-DDL changes. No release or live cutover authorization.
