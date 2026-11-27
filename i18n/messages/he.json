@@ -49,6 +49,9 @@
     "dailyPrepareCompleted": "תועדה השלמה",
     "dailyPrepareAssignments": "מטלות שתועדו אצל המורה בתקופה זו: {count}",
     "dailyPrepareObservations": "תצפיות מאומתות שתועדו במקום העבודה בתקופה זו: {count}",
+    "dailyPrepareGoals": "יעדים נוכחיים בתוכניות פעילות של המאמן: {planned} בתכנון, {inProgress} בביצוע.",
+    "dailyPrepareGoalsLimited": "יש יותר מדי תוכניות פעילות מכדי לספור את היעדים שלהן כאן.",
+    "dailyPrepareGoalsUnavailable": "היעדים הנוכחיים באימון אינם זמינים.",
     "dailyPrepareNoMastery": "התיעוד אינו מעיד על שליטה בחומר.",
     "dailyFreshness": {
       "heading": "עדכניות דירוגים מקוונים",

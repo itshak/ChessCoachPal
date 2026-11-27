@@ -1886,7 +1886,7 @@ const catalogue = [
   },
   {
     name:"ccp_lesson_preparation_get",
-    description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, and teacher-wide assignment counts. Shows unavailable, unrecorded and truncated evidence separately. No participant notes, inferred proficiency, or writes.",
+    description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, teacher-wide assignment counts, and current planned/in-progress goal counts on active teacher-wide plans. Goals are not venue evidence. Shows unavailable, unrecorded and truncated evidence separately. No goal text, participant notes, inferred proficiency, or writes.",
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
   },
   {

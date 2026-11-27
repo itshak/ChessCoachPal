@@ -259,3 +259,15 @@ is only available in All workplaces. Website and delegated MCP share the
 owner-scoped read, return only per-provider counts, and distinguish a bounded
 or unavailable result from no saved evidence. It never claims complete cohort
 totals, reconstructs historical status, contacts a provider or writes a rating.
+
+
+### Current training goals in exact lesson preparation
+
+The same dashboard preparation view, signed HTTP read and delegated MCP
+return only planned and in-progress counts from active plans for the exact
+frozen learners, in one owner-scoped query. Training plans are teacher-wide
+learner records, not evidence for the current workplace or historical
+review window. Paused/completed plans and achieved/abandoned goals are
+excluded. No goal text, target dates, IDs, or learner identities are
+returned. Unknown roster, unavailable data, and a count withheld above the
+100-plan bound remain distinct from zero. No write or mastery inference.

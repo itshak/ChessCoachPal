@@ -158,6 +158,11 @@ export default async function DashboardPage({ searchParams }: {
               </ul>}
               <p>{t("dailyPrepareAssignments",{count:preparation.data.history.assignments.count})}</p>
               <p>{t("dailyPrepareObservations",{count:preparation.data.history.verifiedObservations.count})}</p>
+              {preparation.data.trainingGoals && <p>{preparation.data.trainingGoals.status === "ready"
+                ? t("dailyPrepareGoals", {planned:preparation.data.trainingGoals.planned,
+                  inProgress:preparation.data.trainingGoals.inProgress})
+                : t(preparation.data.trainingGoals.status === "limited" ? "dailyPrepareGoalsLimited"
+                  : "dailyPrepareGoalsUnavailable")}</p>}
               <p>{t("dailyPrepareNoMastery")}</p>
             </div>}
         </>}

@@ -49,6 +49,9 @@
     "dailyPrepareCompleted": "Завершение записано",
     "dailyPrepareAssignments": "Заданий преподавателя за этот период: {count}",
     "dailyPrepareObservations": "Проверенных наблюдений в этом месте за этот период: {count}",
+    "dailyPrepareGoals": "Текущие цели по всем активным планам тренера: {planned} запланировано, {inProgress} в работе.",
+    "dailyPrepareGoalsLimited": "Активных планов слишком много, чтобы подсчитать их цели здесь.",
+    "dailyPrepareGoalsUnavailable": "Текущие цели тренировок недоступны.",
     "dailyPrepareNoMastery": "Эти записи не подтверждают освоение материала.",
     "dailyFreshness": {
       "heading": "Актуальность онлайн-рейтингов",
