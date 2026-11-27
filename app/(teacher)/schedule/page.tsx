@@ -1,7 +1,7 @@
 import {getTranslations} from "next-intl/server";
 import {createClient} from "@/lib/supabase/server";
 import {getPolicy} from "@/lib/server/scheduling";
-import {addDays,isDateString,startOfWeek,toLocalDateString} from "@/lib/schedule";
+import {addDays,isDateString,toLocalDateString} from "@/lib/schedule";
 import {formatEventDateKey} from "@/lib/events";
 import {materializeCanonicalSessions} from "@/lib/server/canonical-calendar-service";
 import {canonicalCalendarWindow} from "@/lib/server/canonical-calendar-read";
@@ -9,6 +9,7 @@ import {canonicalSlotsList} from "@/lib/server/canonical-slot-service";
 import {canonicalMakeupCreditsList} from "@/lib/server/canonical-makeup-service";
 import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
 import {workplaceCurrentStudentIds} from "@/lib/server/workplace-student-scope";
+import {calendarRange,calendarView} from "@/components/teacher/schedule/calendar-view";
 import {CanonicalScheduleBoard} from "@/components/teacher/schedule/CanonicalScheduleBoard";
 import {CanonicalSlotManager,type Slot} from "@/components/teacher/schedule/CanonicalSlotManager";
 import {CanonicalMakeupPanel} from "@/components/teacher/schedule/CanonicalMakeupPanel";
@@ -21,11 +22,12 @@ export async function generateMetadata(){
 
 export default async function SchedulePage({
  searchParams,
-}:{searchParams:Promise<{week?:string;session?:string}>}){
+}:{searchParams:Promise<{week?:string;session?:string;view?:string}>}){
  const t=await getTranslations("calendar");
  const db=await createClient(),{data:{user}}=await db.auth.getUser();
  if(!user)return null;
- const {week,session:requestedSession}=await searchParams;
+ const {week,session:requestedSession,view:rawView}=await searchParams;
+ const view=calendarView(rawView);
  const policy=await getPolicy(db,user.id);
  const context=await teacherWorkplaceContextGet(db,user.id);
  const selection=context.selectedWorkplaceId;
@@ -52,8 +54,9 @@ export default async function SchedulePage({
   if(data)noteTarget={id:data.id,date:toLocalDateString(new Date(data.starts_at),
     data.local_timezone||workplaceTimezones[data.workplace_id]||timezone)};
  }
- const weekStart=startOfWeek(noteTarget?.date??(typeof week==="string"&&isDateString(week)?week:today));
- const weekEnd=addDays(weekStart,6);
+ const anchorDate=noteTarget?.date??(typeof week==="string"&&isDateString(week)&&week>="1900-01-01"&&week<="9998-12-31"?week:today);
+ const range=calendarRange(anchorDate,view);
+ const weekStart=range.start,weekEnd=range.end;
 
  // Materialize the normal near-term horizon and separately the requested
  // week. This avoids one unbounded window when a teacher looks far back or
@@ -102,7 +105,7 @@ export default async function SchedulePage({
   </header>
   {requestedSession!==undefined&&!noteTarget&&<p role="status">{t("lessonLinkUnavailable")}</p>}
   <CanonicalScheduleBoard
-   weekStart={weekStart} today={today} timezone={timezone} personalToday={teacherToday}
+   weekStart={weekStart} rangeEnd={weekEnd} anchorDate={anchorDate} view={view} today={today} timezone={timezone} personalToday={teacherToday}
    selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones}
    sessions={scopedCalendar} events={events} students={students}
    workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
