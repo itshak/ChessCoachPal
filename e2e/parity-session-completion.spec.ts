@@ -250,6 +250,14 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  const attendance=await call("ccp_attendance_preview",{sessionId:ctx.sessionId});
  expect(attendance.data.attendance.every((a:{status:string})=>a.status==="present")).toBe(true);
  expect(details.data.sessionTimeZone).toBe("UTC");
+ const noteInput={sessionId:ctx.sessionId,studentId:ctx.studentIds[0],
+  body:"Synthetic contact-shareable note",privateBody:"Synthetic private lesson observation",
+  sharedWithContacts:false,sendEmail:false,expectedUpdatedAt:null,idempotencyKey:randomUUID(),confirmed:true};
+ const noteSaved=await call("ccp_session_notes_save",noteInput);
+ expect(noteSaved.error).toBeUndefined();
+ const redacted=await call("ccp_session_notes_list",{sessionId:ctx.sessionId});
+ expect(redacted.error).toBeUndefined();
+ expect(JSON.stringify(redacted.data)).not.toContain(noteInput.privateBody);
  await page.goto("/coaching/lessons/"+ctx.sessionId);
  await expect(page.getByRole("heading",{name:details.data.title,exact:true})).toBeVisible();
  await expect(page.locator("article header")).toContainText("Completed");
@@ -257,6 +265,12 @@ test("PARITY:PARITY-sessions-complete-website form requires explicit per-learner
  await expect(participants.getByRole("listitem")).toHaveCount(2);
  await expect(participants.getByText("Present",{exact:true})).toHaveCount(2);
  await expect(page.getByText("Original teacher note stays unless explicitly changed",{exact:true})).toBeVisible();
+ await expect(page.getByText(noteInput.body,{exact:true})).toBeVisible();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toHaveCount(0);
+ await page.getByRole("button",{name:"Show teacher-private notes"}).click();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toBeVisible();
+ await page.getByRole("button",{name:"Hide teacher-private notes"}).click();
+ await expect(page.getByText(noteInput.privateBody,{exact:true})).toHaveCount(0);
 });
 
 test("PARITY:PARITY-completion-cannot-bypass rejects ordinary website/MCP and direct RLS completion",async({page,request})=>{
