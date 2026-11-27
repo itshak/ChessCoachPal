@@ -4,6 +4,8 @@ import {getLocale,getTranslations} from "next-intl/server";
 import {z} from "zod";
 import {createClient} from "@/lib/supabase/server";
 import {sessionsDetails,attendanceList,workplacesList} from "@/lib/server/coach-service";
+import {sessionNotesList} from "@/lib/server/canonical-session-notes";
+import {LessonNotesReadout} from "./LessonNotesReadout";
 import {teacherWorkplaceContextGet} from "@/lib/server/teacher-workplace-context";
 
 export async function generateMetadata(){
@@ -18,8 +20,9 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
  if(!user)return null;
  const lesson=await sessionsDetails(db,user.id,id);
  if(!lesson)notFound();
- const [attendance,workplaces,context,t,h,c,d,common,nav,locale]=await Promise.all([
+ const [attendance,workplaces,context,notes,t,h,c,d,common,nav,locale]=await Promise.all([
   attendanceList(db,user.id,id),workplacesList(db,user.id),teacherWorkplaceContextGet(db,user.id),
+  sessionNotesList(db,user.id,id).catch(()=>null),
   getTranslations("coaching"),getTranslations("lessonHistory"),getTranslations("calendar"),
   getTranslations("dashboard"),getTranslations("common"),getTranslations("nav"),getLocale(),
  ]);
@@ -43,6 +46,10 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
  const prepareHref="/dashboard?prepareSession="+encodeURIComponent(id)+"#lesson-preparation";
  const closeHref="/coaching?"+new URLSearchParams({recordSession:id,recordWorkplace:context.selectedWorkplaceId??"all"});
  const complete=await getTranslations("lessonCompletion");
+ const participantNames=(lesson.participants??[]).map(participant=>{
+  const record=participant.students as unknown as {name:string}|{name:string}[]|null;
+  return {id:participant.student_id,name:(Array.isArray(record)?record[0]:record)?.name??common("unknown")};
+ });
  return <article className="max-w-4xl mx-auto min-w-0 text-[15px] leading-relaxed space-y-5">
   <Link href="/coaching" className="inline-flex min-h-11 items-center text-primary">{nav("lessons")}</Link>
   <header className="rounded-xl border border-border bg-surface p-5 space-y-3">
@@ -90,5 +97,6 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
    <p className="whitespace-pre-wrap break-words" dir="auto">{lesson.lesson_note||common("unknown")}</p>
    <Link href={scheduleHref} className="inline-flex min-h-11 items-center text-primary underline">{common("edit")}{" · "}{c("notes")}</Link>
   </section>
+  <LessonNotesReadout key={id} sessionId={id} initialNotes={notes} participants={participantNames}/>
  </article>;
 }
