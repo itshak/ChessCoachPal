@@ -53,3 +53,10 @@
 @media(hover:hover){.ccp-agenda-link:hover{background:var(--color-surface-dim);}}
 @media(min-width:800px){.ccp-home-workspace .ccp-inspector{position:sticky;top:5rem;align-self:start;max-height:calc(100dvh - 6rem);overflow-y:auto;}}
 @media(max-width:799px){.ccp-home-page[data-mobile-detail=true] > :not(.ccp-home-workspace){display:none;}.ccp-home-page[data-mobile-detail=true] .ccp-inspector{padding-inline:0;}.ccp-home-welcome{display:none;}}
+
+.ccp-material-board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));width:min(100%,320px);aspect-ratio:1;border:1px solid var(--color-border-subtle);overflow:hidden;border-radius:4px;}
+.ccp-material-board span{display:grid;place-items:center;background:#DAD5E6;color:#1C1D23;aspect-ratio:1;font-size:clamp(18px,3vw,32px);line-height:1;font-family:"DejaVu Sans","Segoe UI Symbol",serif;}
+.ccp-material-board span[data-dark=true]{background:#79728F;}
+.ccp-material-board span[data-white=true]{color:#F1F2F8;text-shadow:0 0 1px #1C1D23,0 1px 1px #1C1D23;}
+.ccp-material-detail{font-size:16px;line-height:1.6;}
+@media(min-width:800px){.ccp-material-workspace .ccp-master-detail[data-open=true]{grid-template-columns:minmax(0,1fr) minmax(280px,48%);}}

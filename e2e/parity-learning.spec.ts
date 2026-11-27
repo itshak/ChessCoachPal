@@ -91,6 +91,11 @@ test("PARITY:PARITY-material-links shares the typed catalog and revision guarded
 });
  expect(material.error).toBeUndefined();
  const materialId=material.data.material.id as string;
+ await page.goto("/learning");
+ const catalog=page.getByRole("region",{name:"Typed learning materials catalog"});
+ await catalog.getByRole("button",{name:/Test study/}).filter({hasText:material.data.material.title}).click();
+ await expect(catalog.getByRole("heading",{name:material.data.material.title,exact:true})).toBeVisible();
+ await expect(catalog.getByRole("link",{name:"Open original source"})).toHaveAttribute("href","https://lichess.org/study/AbCd1234");
  const requestId=randomUUID();
  const linked=await call("ccp_material_links_create",{
    studentId,materialId,requestId,confirmed:true,

@@ -1479,7 +1479,11 @@
     "createError": "לא ניתן ליצור חומר לימוד",
     "corrected": "תיקון החומר נשמר.",
     "saved": "החומר נשמר בספריית הלמידה לשימוש חוזר.",
-    "saveFailed": "שמירת החומר נכשלה"
+    "saveFailed": "שמירת החומר נכשלה",
+    "selectMaterial": "בחרו חומר להצגת הפרטים שלו.",
+    "materialDetails": "פרטי חומר",
+    "resumeForm": "המשך עריכה",
+    "teachingEvidence": "עדויות הוראה ושיעורי בית"
   },
   "lessonCapture": {
     "currentCaptureReview": "סקירת קליטת השיעור הנוכחית",

@@ -2,8 +2,9 @@
 
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {useTranslations} from "next-intl";
+import {MasterDetail,RecordRow,RecordTitle,RecordProse,ContextActions} from "@/components/ui/workspace-layout";
 
 type MaterialKind="game"|"puzzle"|"drill"|"study_chapter"|"external_link";
 type Material={
@@ -16,14 +17,30 @@ type Material={
 const field="w-full rounded-lg border border-border bg-surface p-2 text-foreground";
 const button="rounded-lg bg-primary px-4 py-2 text-white font-semibold disabled:opacity-50";
 const kinds:MaterialKind[]=["game","puzzle","drill","study_chapter","external_link"];
+// Render only the stored placement; this is not a rules or solution validator.
+const pieces:Record<string,string>={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+function StoredPosition({fen,label}:{fen:string;label:string}){
+ const ranks=fen.trim().split(/\s+/)[0]?.split("/")??[];
+ if(ranks.length!==8||ranks.some(rank=>!/^[1-8PNBRQKpnbrqk]+$/.test(rank)))return null;
+ const rows=ranks.map(rank=>[...rank].flatMap(ch=>/^[1-8]$/.test(ch)?Array<string>(Number(ch)).fill(""):[ch]));
+ if(rows.some(row=>row.length!==8))return null;
+ return <div className="ccp-material-board" role="img" aria-label={label+": "+fen} dir="ltr">
+  {rows.flatMap((row,i)=>row.map((piece,j)=><span key={i*8+j} aria-hidden="true" data-dark={(i+j)%2===1} data-white={!!piece&&piece===piece.toUpperCase()}>{pieces[piece]??""}</span>))}
+ </div>;
+}
 export function LearningMaterialsCatalog(){
-  const t=useTranslations("materialCatalog");
+  const t=useTranslations("materialCatalog"),nav=useTranslations("nav"),common=useTranslations("common");
   const toUserError=useLocalizedApiError();
   const labels:Record<MaterialKind,string>={
     game:t("kindGame"),puzzle:t("kindPuzzle"),drill:t("kindDrill"),
     study_chapter:t("kindChapter"),external_link:t("kindExternal")
   };
   const [items,setItems]=useState<Material[]>([]);
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [formOpen,setFormOpen]=useState(false),[detailOpen,setDetailOpen]=useState(true),[mobileDetail,setMobileDetail]=useState(false);
+  const [loading,setLoading]=useState(true),[listUnavailable,setListUnavailable]=useState(false);
+  const listRequest=useRef(0),origin=useRef<HTMLElement|null>(null);
+  const selected=items.find(item=>item.id===selectedId)??null;
   const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
   const [relationSource,setRelationSource]=useState<Material|null>(null);
   const [targetMaterialId,setTargetMaterialId]=useState("");
@@ -59,19 +76,26 @@ export function LearningMaterialsCatalog(){
     assignmentCount:number;relationshipCount:number;canArchive:boolean;
   }|null>(null);
   const load=useCallback(async()=>{
+    const sequence=++listRequest.current;
+    setLoading(true);setListUnavailable(false);
     const params=new URLSearchParams({limit:"100",includeArchived:showArchived?"true":"false"});
     if(filter)params.set("kind",filter);
     if(search.trim())params.set("query",search.trim());
     const response=await fetch("/api/training/materials?"+params,{cache:"no-store"});
-    if(!response.ok)throw new Error(t("loadFailed"));
+    if(!response.ok){if(sequence===listRequest.current){setLoading(false);setListUnavailable(true);}throw new Error(t("loadFailed"));}
     const data=await response.json() as {materials:Material[];total:number};
-    setItems(data.materials);setTotal(data.total);
+    if(sequence!==listRequest.current)return;
+    setItems(data.materials);setTotal(data.total);setLoading(false);
   },[filter,search,showArchived,t]);
   useEffect(()=>{let active=true;
-    void load().catch(()=>{if(active)setError(t("loadError"));});
-    return()=>{active=false};
+    void load().catch(()=>{if(active){setError(t("loadError"));setLoading(false);setListUnavailable(true);}});
+    return()=>{active=false;listRequest.current+=1;};
   },[load,t]);
+  function reveal(){origin.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setDetailOpen(true);setMobileDetail(true);}
+  function back(){setMobileDetail(false);requestAnimationFrame(()=>origin.current?.focus({preventScroll:true}));}
+  function choose(material:Material){if(formOpen||busy||relationSource||archivePreview)return;setSelectedId(material.id);setError("");setStatus("");reveal();}
   function beginEdit(material:Material){
+    setFormOpen(true);setDetailOpen(true);setMobileDetail(true);
     setEditing({id:material.id,revision:material.revision});
     setKind(material.kind);setTitle(material.title);setDescription(material.description);
     setSourceUrl(material.source_url??"");
@@ -166,18 +190,15 @@ export function LearningMaterialsCatalog(){
       const data=await response.json();
       if(!response.ok)throw new Error(toUserError(data, t("createError")));
       setStatus(editing?t("corrected"):t("saved"));
-      setEditing(null);
+      if(data?.material?.id)setSelectedId(data.material.id);
+      setEditing(null);setFormOpen(false);
       setTitle("");setDescription("");setPgn("");setFen("");setInstructions("");
       setSourceUrl("");setStudyId("");setChapterId("");setThemes("");setSolution("");
       await load();
     }catch(e){setError(toUserError(e, t("saveFailed")));}
     finally{setBusy(false);}
   }
-  return <section className="space-y-4" aria-label={t("aria")}>
-    <div>
-      <h2 className="text-2xl font-semibold">{t("title")}</h2>
-      <p className="text-sm text-muted">{t("intro")}</p>
-    </div>
+  const detail=<div className="space-y-4 ccp-material-detail">
     {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label={t("archiveAria")}>
       <h3 className="font-semibold">{t("archivePreview",{name:archivePreview.title})}</h3>
       <p className="text-sm text-muted">{t("archiveImpact",{
@@ -217,7 +238,7 @@ export function LearningMaterialsCatalog(){
       </div>
       <p className="text-xs text-muted">{t("existingRelations",{count:relations.length})}</p>
     </form>}
-    <form onSubmit={create} className="rounded-xl border border-border p-4 space-y-3">
+    {formOpen&&<form onSubmit={create} className="space-y-3">
       <h3 className="text-lg font-semibold">{editing?t("correctMaterial"):t("addMaterial")}</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">{t("materialType")}
@@ -293,16 +314,40 @@ export function LearningMaterialsCatalog(){
       </div>}
       <div className="flex gap-2">
         <button className={button} type="submit" disabled={busy}>{busy?t("saving"):editing?t("saveCorrection"):t("saveMaterial")}</button>
-        {editing&&<button className="rounded-lg border border-border px-4 py-2 text-sm" type="button" onClick={()=>{
-          setEditing(null);setTitle("");setDescription("");setPgn("");setFen("");
+        <button className="rounded-lg border border-border px-4 py-2 text-sm" type="button" onClick={()=>{
+          setEditing(null);setFormOpen(false);setTitle("");setDescription("");setPgn("");setFen("");
           setInstructions("");setSourceUrl("");setStudyId("");setChapterId("");
           setThemes("");setSolution("");setStatus("");setError("");
-        }}>{t("cancelCorrection")}</button>}
+        }}>{editing?t("cancelCorrection"):common("cancel")}</button>
       </div>
-      {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
-      {status&&<p role="status" className="text-sm text-emerald-600">{status}</p>}
-    </form>
-    <div className="space-y-2">
+    </form>}
+    {!formOpen&&!relationSource&&!archivePreview&&selected&&<div className="space-y-4">
+      {(()=>{const material=selected;return <>
+        <RecordTitle title={<bdi dir="auto">{material.title}</bdi>} subtitle={labels[material.kind]}/>
+        <ContextActions>
+        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" onClick={()=>beginEdit(material)} aria-label={t("correctAria",{name:material.title})}>{t("correctButton")}</button>
+        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={t("linkAria",{name:material.title})}>{t("relationsButton")}</button>
+        {material.archived_at
+          ?<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={t("restoreAria",{name:material.title})}>{t("restoreButton")}</button>
+          :<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" onClick={()=>{void previewMaterialArchive(material);}} aria-label={t("archiveButtonAria",{name:material.title})}>{t("archiveButton")}</button>}
+        </ContextActions>
+        {material.description&&<RecordProse>{material.description}</RecordProse>}
+        {material.chess_games&&<p className="text-xs text-muted"><bdi dir="auto">{material.chess_games.white_player}</bdi>
+         {" – "}<bdi dir="auto">{material.chess_games.black_player}</bdi>
+         {" ("}<bdi dir="ltr">{material.chess_games.result}</bdi>{")"}</p>}
+        {material.chess_puzzles&&<><StoredPosition fen={material.chess_puzzles.fen} label={t("puzzleFen")}/><p className="text-sm font-mono break-all" dir="ltr">FEN: {material.chess_puzzles.fen}</p>{material.chess_puzzles.solution&&<details><summary>{t("solution")}</summary><RecordProse>{material.chess_puzzles.solution}</RecordProse></details>}</>}
+        {material.chess_drills&&<RecordProse>{material.chess_drills.instructions}</RecordProse>}
+        {material.chess_games&&<details><summary>{t("gamePgn")}</summary><pre dir="ltr" className="whitespace-pre-wrap break-all text-sm">{material.chess_games.pgn}</pre></details>}
+        {material.chess_study_chapters&&<p className="text-xs text-muted">{t("studyChapterSummary",{
+        study:material.chess_study_chapters.study_id,
+        chapter:material.chess_study_chapters.chapter_id||t("notSpecified")})}</p>}
+        {material.source_url&&<a className="text-sm underline" href={material.source_url} target="_blank" rel="noopener noreferrer">{t("originalSource")}</a>}
+      </>;})()}
+    </div>}
+    {!formOpen&&!relationSource&&!archivePreview&&!selected&&<p className="text-muted">{t("selectMaterial")}</p>}
+  </div>;
+  const master=<div className="space-y-3">
+    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">{t("title")}</h2><button type="button" className={button} disabled={busy} onClick={()=>{if(!relationSource&&!archivePreview)setFormOpen(true);reveal();}}>{formOpen||relationSource||archivePreview?t("resumeForm"):t("addMaterial")}</button></div>
       <div className="flex gap-2 flex-wrap">
         <input className={field+" sm:max-w-xs"} aria-label={t("searchAria")} value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("searchHint")}/>
         <select className={field+" sm:max-w-xs"} aria-label={t("filterAria")} value={filter} onChange={e=>setFilter(e.target.value as MaterialKind|"")}>
@@ -313,25 +358,14 @@ export function LearningMaterialsCatalog(){
         <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>{t("includeArchived")}
       </label>
       <p className="text-sm text-muted">{t("showing",{shown:items.length,total})}</p>
-      {items.map(material=><div key={material.id} className="rounded-lg border border-border p-3 space-y-1">
-        <strong className="text-sm"><bdi dir="auto">{material.title}</bdi></strong>
-        <span className="ms-2 text-xs text-muted">{labels[material.kind]}</span>
-        <button className="ms-3 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>beginEdit(material)} aria-label={t("correctAria",{name:material.title})}>{t("correctButton")}</button>
-        <button className="ms-2 rounded border border-border px-2 py-1 text-xs" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={t("linkAria",{name:material.title})}>{t("relationsButton")}</button>
-        {material.archived_at
-          ?<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={t("restoreAria",{name:material.title})}>{t("restoreButton")}</button>
-          :<button type="button" className="ms-2 rounded border border-border px-2 py-1 text-xs" onClick={()=>{void previewMaterialArchive(material);}} aria-label={t("archiveButtonAria",{name:material.title})}>{t("archiveButton")}</button>}
-        {material.description&&<p className="text-sm" dir="auto">{material.description}</p>}
-        {material.chess_games&&<p className="text-xs text-muted"><bdi dir="auto">{material.chess_games.white_player}</bdi>
-         {" – "}<bdi dir="auto">{material.chess_games.black_player}</bdi>
-         {" ("}<bdi dir="ltr">{material.chess_games.result}</bdi>{")"}</p>}
-        {material.chess_puzzles&&<p className="text-xs font-mono break-all" dir="ltr">FEN: {material.chess_puzzles.fen}</p>}
-        {material.chess_drills&&<p className="text-sm" dir="auto">{material.chess_drills.instructions}</p>}
-        {material.chess_study_chapters&&<p className="text-xs text-muted">{t("studyChapterSummary",{
-        study:material.chess_study_chapters.study_id,
-        chapter:material.chess_study_chapters.chapter_id||t("notSpecified")})}</p>}
-        {material.source_url&&<a className="text-sm underline" href={material.source_url} target="_blank" rel="noopener noreferrer">{t("originalSource")}</a>}
-      </div>)}
-    </div>
+    {loading&&<p role="status">{common("loading")}</p>}
+    {!loading&&listUnavailable&&<p role="alert">{t("loadError")}</p>}
+    {!loading&&!listUnavailable&&!items.length&&<p>{common("noResults")}</p>}
+    {!listUnavailable&&items.map(material=><div key={material.id} data-material-id={material.id} className="min-w-0"><RecordRow title={<bdi dir="auto">{material.title}</bdi>} description={labels[material.kind]} selected={selectedId===material.id} onSelect={()=>choose(material)}/></div>)}
+  </div>;
+  return <section className="space-y-4 ccp-material-workspace" aria-label={t("aria")}>
+    {error&&<p role="alert" className="text-sm text-error">{error}</p>}
+    {status&&<p role="status" className="text-sm text-success">{status}</p>}
+    <MasterDetail master={master} detail={detail} masterLabel={t("title")} detailLabel={t("materialDetails")} detailOpen={detailOpen} onDetailOpenChange={setDetailOpen} mobileDetail={mobileDetail} onBack={back} backLabel={common("back")} showDetailLabel={nav("showDetails")} hideDetailLabel={nav("hideDetails")}/>
   </section>;
 }

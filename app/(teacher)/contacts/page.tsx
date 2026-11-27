@@ -7,7 +7,7 @@ export async function generateMetadata(){
 }
 export default async function ContactsPage(){
   const t=await getTranslations("contacts");
-  return <div className="mx-auto max-w-6xl">
+  return <div className="max-w-6xl">
     <header className="mb-6">
       <h1 className="text-2xl font-bold">{t("title")}</h1>
       <p className="mt-1 text-sm text-muted">{t("intro")}</p>

@@ -1479,7 +1479,11 @@
     "createError": "Unable to create material",
     "corrected": "Material correction saved.",
     "saved": "Material saved to the reusable learning library.",
-    "saveFailed": "Unable to save material"
+    "saveFailed": "Unable to save material",
+    "selectMaterial": "Select a material to read its details.",
+    "materialDetails": "Material details",
+    "resumeForm": "Resume editing",
+    "teachingEvidence": "Teaching evidence & homework"
   },
   "lessonCapture": {
     "currentCaptureReview": "Current capture review",

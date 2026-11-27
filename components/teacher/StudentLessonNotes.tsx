@@ -66,7 +66,7 @@ export function StudentLessonNotes({
                     <p className="text-sm font-semibold text-muted mb-1">
                       {t("private")}
                     </p>
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" dir="auto">{note.privateBody}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap break-words" dir="auto">{note.privateBody}</p>
                   </div>
                 )}
                 {hasFamily && (
@@ -74,7 +74,7 @@ export function StudentLessonNotes({
                     <p className="text-sm font-semibold text-muted mb-1">
                       {calendar("familyNote")}
                     </p>
-                    <p className="text-sm whitespace-pre-wrap">{note.body}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap">{note.body}</p>
                   </div>
                 )}
               </Card>

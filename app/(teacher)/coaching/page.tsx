@@ -28,12 +28,12 @@ export default async function CoachingPage({searchParams}:{searchParams:Promise<
   const pin=dailyCloseRosterInput.safeParse({sessionId:recordSession,dailyWorkplaceId:recordWorkplace==="all"?null:recordWorkplace});
   if(exact){
     const t=await getTranslations("lessonCompletion");
-    return <main id="lesson-completion" className="max-w-6xl mx-auto px-4 py-8">
+    return <div id="lesson-completion" className="max-w-6xl">
       {pin.success&&pin.data.dailyWorkplaceId!==undefined
         ? <LessonCompletionPanel key={pin.data.sessionId+":"+(pin.data.dailyWorkplaceId??"all")}
           pinned={{sessionId:pin.data.sessionId,workplaceId:pin.data.dailyWorkplaceId}}/>
         : <p role="alert">{t("exactUnavailable")}</p>}
-    </main>;
+    </div>;
   }
   if(capture==="1"){
     const nav=await getTranslations("nav");
