@@ -1,4 +1,21 @@
-# Implementation progress — 2026-11-17
+# Multilingual support implementation progress
+
+## Current source checkpoint (2026-11-27)
+
+**OpenSpec remains active.** The verified [main tree at 0d28a8da](https://github.com/itshak/ChessCoachPal/commit/0d28a8dad3cce855497057b7f9d3a21dc911dd49) is newer than the deployed invite-only beta. These are signed browser and delegated MCP checks with disposable synthetic data, not real ChatGPT/Claude, production or design acceptance.
+
+| Area | Verified behavior in source |
+| --- | --- |
+| Saved language (A4, B4, B5) | The existing signed locale suite verifies website and MCP updates, Hebrew/Russian page titles, language/direction and accessible selectors, invalid-input rejection without a change, and kept workplace settings. [#263](https://github.com/itshak/ChessCoachPal/pull/263) additionally signs in from an English browser with a Russian guest cookie: saved Hebrew wins in the response HTML and hydrated page; read-only MCP sees but cannot discover or call the update; a second Russian coach stays independently scoped; the original Tokyo/JPY/Russian workplace is unchanged. This does not verify all sign-out/multi-tab transitions or every historical-record case. |
+| Human dates and output (D1–D4) | [#251](https://github.com/itshak/ChessCoachPal/pull/251) verifies identical localized website/MCP CSV, TXT and private invoice PDF bytes in English, Hebrew and Russian. [#258](https://github.com/itshak/ChessCoachPal/pull/258) covers Portal expiry/renewal labels without sending anything. [#261](https://github.com/itshak/ChessCoachPal/pull/261) covers the lesson completion date in its frozen session timezone or workplace fallback, without an implicit write. These are bounded checks; the full formatting and live mail reviews remain separate. |
+| Historical imports (D6) | [#257](https://github.com/itshak/ChessCoachPal/pull/257) covers Hebrew and Russian roster CSV. [#262](https://github.com/itshak/ChessCoachPal/pull/262) covers reviewed Hebrew staged CSV and Russian aggregate historical attendance mappings, with exact aliases, explicit columns, canonical dates/statuses, safe replay and no generated calendar sessions. Unknown or ambiguous values fail without writes. Unsupported formats and unreviewed mappings are not accepted. |
+| Learner selection and lesson reporting (E3, E4) | [#259](https://github.com/itshak/ChessCoachPal/pull/259) adds optional human-facing localized learner-resolution guidance without changing errors, candidate identity or default shape. [#260](https://github.com/itshak/ChessCoachPal/pull/260) completes a signed synthetic group lesson from Russian alias/note and Hebrew learner names to a private English report, with exact ambiguity and permission rejection, explicit attendance, one group lesson and 75 minutes counted, and no private-note leakage. |
+
+Exact integration evidence for this checkpoint: [CI (625 unit tests)](https://github.com/itshak/ChessCoachPal/actions/runs/45958874165), [authenticated browser/delegated MCP (476 cases plus three repeats)](https://github.com/itshak/ChessCoachPal/actions/runs/45958874299), [security](https://github.com/itshak/ChessCoachPal/actions/runs/45958874265), [fresh Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45958874197) and [synthetic restore](https://github.com/itshak/ChessCoachPal/actions/runs/45958874164). Main matches that tested tree. Those gates do not replace site-wide visual RTL/keyboard/screen-reader review, legal review, actual mail delivery, or real client validation. Optional note drafting is not shipped as a teacher workflow. See the [source and deployment crosswalk](../../../docs/OPENSPEC_SOURCE_REMAINING.md) and [open checklist](tasks.md).
+
+## Historical chronology (2026-11-17)
+
+The original branch/PR #86 notes below are retained as a historical record; their branch status, catalog count and release directions are not current instructions.
 
 > **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
 

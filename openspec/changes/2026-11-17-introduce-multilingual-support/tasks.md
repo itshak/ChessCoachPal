@@ -7,7 +7,7 @@
 
 > **Deployment terminology (ADR-0018):** ChessCoachPal is operator-only SaaS; any "self-hosting" references here describe our infrastructure/CI, never customer-hosted product support. [Current policy](../../docs/adr/0018-operator-only-saas-and-tenant-scaling.md).
 
-**v0.1.7 final-release candidate integrated with current main (2026-11-18).** The maintainer has explicitly authorized CI-gated merge to main, new annotated version tag and Coolify redeployment. Do not merge, tag or deploy unless the exact candidate CI, authenticated E2E, fresh schema, security, Compose and backup/restore gates pass. Mark only verified work complete; live ChatGPT/Claude tests and a manual screen-reader/legal review remain separately deferred (see docs/RELEASING.md), not falsely checked off.
+**Current acceptance:** Follow the [source checkpoint](IMPLEMENTATION_PROGRESS.md#current-source-checkpoint-2026-11-27) and [release runbook](../../../docs/RELEASING.md). Mark only verified work complete. Real ChatGPT/Claude, manual screen-reader and legal reviews remain separate. Merged source does not authorize tagging or deployment.
 
 ## A. Establish the contract and framework
 - [ ] A1. Inventory every visible English literal in teacher, guest/auth, legal, marketing, portal, emails, reports/CSV/PDF, PWA/offline, error states and accessibility text; map surfaces to translation namespaces.
@@ -20,8 +20,8 @@
 - [ ] B1. Add constrained teachers.preferred_locale with en default in canonical fresh-install schema; write/review additive deployment plan for databases with real data; backup and restore.
 - [x] B2. Extend shared teacherProfileGet/teacherProfileUpdate, website profile PUT and AccountSettings with preferredLocale; expose native labels English / עברית / Русский and a recoverable global switch.
 - [x] B3. Extend ccp_teacher_profile_get/update typed MCP schemas/dispatcher using the same domain code, confirmation and OAuth scopes; expose preferredLocale in ccp_teacher_context_get and website teacher context.
-- [ ] B4. Update parity registry and add authenticated website↔MCP E2E proving change/reload/readback across device/session, read-only rejection, invalid locale, unauthorized user isolation, stable metadata and no secret exposure.
-- [ ] B5. Verify workplace locale, currency and timezone remain independent from teacher UI setting; no rewriting of student names, notes or historic records.
+- [x] B4. Update parity registry and add authenticated website↔MCP E2E proving change/reload/readback across device/session, read-only rejection, invalid locale, unauthorized user isolation, stable metadata and no secret exposure. [Signed profile/browser suite and #263](IMPLEMENTATION_PROGRESS.md#current-source-checkpoint-2026-11-27) verify these cases using disposable accounts. Native-client acceptance is E5.
+- [ ] B5. Verify workplace locale, currency and timezone remain independent from teacher UI setting; no rewriting of student names, notes or historic records. [#263](https://github.com/itshak/ChessCoachPal/pull/263) verifies independent workplace settings, not all authored/historical records.
 
 ## C. Entire website and full RTL
 - [ ] C1. Translate main layout/nav, login/signup/reset/onboarding, dashboard, Account/studio, all global dialogs/toasts/errors/loading/empty states and help into en/he/ru.
@@ -37,13 +37,13 @@
 - [x] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for the same resolved locale. Signed actual CSV/TXT downloads and private invoice PDF equality in EN/HE/RU passed in [#251](https://github.com/itshak/ChessCoachPal/pull/251), [exact E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45912511029).
 - [x] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
 - [ ] D5. Extend optional AI note-drafting to accept reviewed outputLocale while preserving evidence and explicit teacher approval; prevent inferred mastery/ratings or silent translation of persisted notes.
-- [ ] D6. Audit historical spreadsheet import and name alias normalization end-to-end; retain exact matching and ambiguous-name fail-closed behavior. [Signed source #257](https://github.com/itshak/ChessCoachPal/pull/257) verifies Hebrew/Russian roster CSV headers, archive status, exact names and written workplace scope; ambiguous headers and unknown archive flags fail without writes. This is not acceptance of all historical-import formats or lesson alias workflows.
+- [ ] D6. Audit historical spreadsheet import and name alias normalization end-to-end; retain exact matching and ambiguous-name fail-closed behavior. [Signed source #257](https://github.com/itshak/ChessCoachPal/pull/257) verifies Hebrew/Russian roster CSV headers, archive status, exact names and written workplace scope; ambiguous headers and unknown archive flags fail without writes. [#262](https://github.com/itshak/ChessCoachPal/pull/262) adds signed historical attendance verification for reviewed Hebrew staged and Russian aggregate mappings. This is not acceptance of all import formats.
 
 ## E. Multilingual MCP experience and safety
 - [x] E1. Keep stable ccp_* tool names, input/output schema property names, error codes, scopes, ordered tools/list and single /mcp connection across locales; add a catalog invariance test.
 - [x] E2. Provide concise locale-language guidance in existing MCP tool descriptions/initialization only where protocol/client support is proven; instructions prioritize explicit user message language over preferredLocale for prose.
 - [ ] E3. Add or reuse localized displayMessage/userMessage for human-facing errors where useful, never replacing structured error code or technical diagnostic; apply outputLocale only to human-formatted output.
-- [ ] E4. Test Hebrew/Russian conversational synthetic capture and readback, alias ambiguity, report requested in another language, one-group-lesson count and no accidental write/permission bypass.
+- [x] E4. Test Hebrew/Russian conversational synthetic capture and readback, alias ambiguity, report requested in another language, one-group-lesson count and no accidental write/permission bypass. [#260](https://github.com/itshak/ChessCoachPal/pull/260) verifies the structured capture-to-report path through signed delegated MCP with synthetic inputs, not model interpretation in a real client (E5).
 - [ ] E5. Independently verify real ChatGPT and Claude multilingual workflows prepublication, documenting client limitations without treating model-only responses as persistence evidence.
 
 ## F. Verification, docs and archive
