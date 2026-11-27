@@ -112,3 +112,75 @@ test("PARITY: exact active portal renewal invalidates old links before separatel
   expect((await guest.get("/api"+newPath+"/calendar")).status()).toBe(404);
  }finally{await guest.dispose();}
 });
+
+test.describe("teacher-timezone portal presentation",()=>{
+ test.use({locale:"en-US",timezoneId:"Pacific/Honolulu"});
+ test("PARITY: Russian coach sees grant expiry and exact renewal in the teacher timezone",async({
+  page,request,isolatedTeacher,
+ })=>{
+  const call=await delegatedTool(page,request,"coach:read coach:write",isolatedTeacher);
+  const run=async(name:string,args:Record<string,unknown>)=>{
+   const result=await call(name,args);expect(result.error?.code,name).toBeUndefined();return result.data;
+  };
+  const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+   auth:{persistSession:false,autoRefreshToken:false},
+  });
+  const owner=await db.from("teachers").select("id").eq("email",isolatedTeacher.email).single();
+  expect(owner.error).toBeNull();
+  const teacherId=owner.data!.id;
+  const timeZone="Asia/Jerusalem";
+  expect((await db.from("teachers").update({preferred_locale:"ru"}).eq("id",teacherId)).error).toBeNull();
+  expect((await db.from("teacher_settings").upsert({teacher_id:teacherId,timezone:timeZone})).error).toBeNull();
+  const clock=new Date();clock.setUTCHours(23,40,0,0);
+  await page.clock.setFixedTime(clock);
+  const key=()=>({idempotencyKey:randomUUID(),confirmed:true});
+  const studentId=(await run("ccp_students_create",{name:"Synthetic locale pupil "+randomUUID(),idempotencyKey:randomUUID()})).entityId;
+  const workplaceId=(await run("ccp_workplaces_create",{name:"Synthetic locale venue "+randomUUID(),timezone:"UTC",
+   currency:"USD",locale:"en",policy:{},idempotencyKey:randomUUID()})).entityId;
+  await run("ccp_workplaces_enroll",{studentId,workplaceId,idempotencyKey:randomUUID()});
+  const contact=await run("ccp_contacts_create",{displayName:"Synthetic locale contact "+randomUUID(),...key()});
+  await run("ccp_student_contacts_link",{studentId,contactId:contact.id,relationshipLabel:"Synthetic guest",...key()});
+  const original=new Date(clock.getTime()+4*86_400_000).toISOString();
+  const grant=await run("ccp_portal_grants_create",{studentId,workplaceId,contactId:contact.id,
+   permissions:["calendar"],expiresAt:original,...key()});
+  const endpoint="/api/portal-grants/"+grant.id;
+
+  await page.goto("/students/"+studentId);
+  await expect(page.locator("html")).toHaveAttribute("lang","ru");
+  const format=(iso:string,withTime:boolean)=>page.evaluate(({iso,withTime,timeZone})=>{
+   const parts={year:"numeric",month:"numeric",day:"numeric"} as const;
+   const clock={hour:"numeric",minute:"2-digit",timeZoneName:"short"} as const;
+   return {
+    teacher:new Intl.DateTimeFormat("ru",{...parts,...(withTime?clock:{}),timeZone}).format(new Date(iso)),
+    browser:new Intl.DateTimeFormat("en-US",{...parts,...(withTime?clock:{})}).format(new Date(iso)),
+    teacherDay:new Intl.DateTimeFormat("en-US",{...parts,timeZone}).format(new Date(iso)),
+    browserDay:new Intl.DateTimeFormat("en-US",parts).format(new Date(iso)),
+   };
+  },{iso,withTime,timeZone});
+  const local=await format(original,false);
+  expect(local.teacherDay).not.toBe(local.browserDay);
+  const expiry=page.getByText(/Истекает:/).locator("time");
+  await expect(expiry).toHaveText(local.teacher);
+  expect(await expiry.textContent()).not.toBe(local.browser);
+  expect(new Date((await expiry.getAttribute("datetime"))!).toISOString()).toBe(original);
+  await page.getByRole("button",{name:"Продлить доступ",exact:true}).click();
+  const [preview]=await Promise.all([
+   page.waitForResponse(r=>r.request().method()==="GET"&&new URL(r.url()).pathname===endpoint&&
+    new URL(r.url()).searchParams.has("renewExpiresAt")),
+   page.getByRole("button",{name:"Проверить продление",exact:true}).click(),
+  ]);
+  expect(preview.status()).toBe(200);
+  const renewedAt=new Date(clock.getTime()+90*86_400_000).toISOString();
+  const websitePreview=await preview.json();
+  expect(websitePreview.expiresAt).toBe(renewedAt);
+  expect(await run("ccp_portal_grants_renew_preview",{grantId:grant.id,expiresAt:renewedAt})).toEqual(websitePreview);
+  const renewal=await format(renewedAt,true);
+  expect(renewal.teacherDay).not.toBe(renewal.browserDay);
+  const approval=page.getByText(/Новый срок:/);
+  await expect(approval).toContainText(renewal.teacher);
+  await expect(approval).not.toContainText(renewal.browser);
+  const readback=await run("ccp_portal_grants_get",{grantId:grant.id});
+  expect(readback).toMatchObject({revision:1,issued:false});
+  expect(new Date(readback.expiresAt).toISOString()).toBe(original);
+ });
+});

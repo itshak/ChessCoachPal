@@ -37,7 +37,7 @@
 - [x] D3. Preserve UTF-8 BOM, safe CSV escaping/formula injection protection, Unicode and Hebrew PDF embedding; test identical website/MCP exported bytes for the same resolved locale. Signed actual CSV/TXT downloads and private invoice PDF equality in EN/HE/RU passed in [#251](https://github.com/itshak/ChessCoachPal/pull/251), [exact E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45912511029).
 - [x] D4. Localize event/reminder/email and portal messages using explicit recipient/workplace/portal language, including HTML lang/dir and plain text, without sending as a side effect of language selection.
 - [ ] D5. Extend optional AI note-drafting to accept reviewed outputLocale while preserving evidence and explicit teacher approval; prevent inferred mastery/ratings or silent translation of persisted notes.
-- [ ] D6. Audit historical spreadsheet import, Russian/Hebrew column headers and name alias normalization; retain exact matching and ambiguous-name fail-closed behavior.
+- [ ] D6. Audit historical spreadsheet import and name alias normalization end-to-end; retain exact matching and ambiguous-name fail-closed behavior. [Signed source #257](https://github.com/itshak/ChessCoachPal/pull/257) verifies Hebrew/Russian roster CSV headers, archive status, exact names and written workplace scope; ambiguous headers and unknown archive flags fail without writes. This is not acceptance of all historical-import formats or lesson alias workflows.
 
 ## E. Multilingual MCP experience and safety
 - [x] E1. Keep stable ccp_* tool names, input/output schema property names, error codes, scopes, ordered tools/list and single /mcp connection across locales; add a catalog invariance test.

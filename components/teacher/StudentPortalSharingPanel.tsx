@@ -1,7 +1,7 @@
 "use client";
 
 import {useCallback,useEffect,useState,type FormEvent} from "react";
-import {useTranslations} from "next-intl";
+import {useFormatter,useTranslations} from "next-intl";
 import {Card} from "@/components/ui/card";
 import {Button} from "@/components/ui/button";
 import type {PortalGrantPermission} from "@/lib/server/portal-grant-schemas";
@@ -17,11 +17,16 @@ type Renewal={grant:Grant;expiresAt:string;idempotencyKey:string};
 const kinds:[PortalGrantPermission,...PortalGrantPermission[]]=[
   "calendar","cancel","shared_notes","event_rsvp","finance",
 ];
+const expiryDate={year:"numeric",month:"numeric",day:"numeric"} as const;
+const expiryInstant={...expiryDate,hour:"numeric",minute:"2-digit",timeZoneName:"short"} as const;
 const field="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground";
 
 /** The teacher approves one exact contact × student × workplace grant. */
-export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:string;workplaces:Workplace[]}){
+export function StudentPortalSharingPanel({studentId,workplaces,timeZone}:{
+ studentId:string;workplaces:Workplace[];timeZone:string;
+}){
   const t=useTranslations("portalSharing");
+  const format=useFormatter();
   const [contacts,setContacts]=useState<Contact[]>([]);
   const [links,setLinks]=useState<Link[]>([]);
   const [payers,setPayers]=useState<Payer[]>([]);
@@ -148,7 +153,7 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
         <div className="text-sm min-w-0">
           <p><bdi dir="auto">{contactName(grant.contactId)}</bdi> · <bdi dir="auto">{placeName(grant.workplaceId)}</bdi></p>
           <p className="text-xs text-muted mt-1">{grant.permissions.map(kind=>t(kind)).join(", ")}</p>
-          <p className="text-xs text-muted mt-1">{t("expires")}: {new Date(grant.expiresAt).toLocaleDateString()}</p>
+          <p className="text-xs text-muted mt-1">{t("expires")}: <time dateTime={grant.expiresAt}>{format.dateTime(new Date(grant.expiresAt),{...expiryDate,timeZone})}</time></p>
           {grant.revokedAt&&<p className="text-xs text-error">{t("revoked")}</p>}
         </div>
         {!grant.revokedAt&&<div className="flex gap-2">
@@ -167,7 +172,7 @@ export function StudentPortalSharingPanel({studentId,workplaces}:{studentId:stri
         <input className={field} type="number" min={1} max={366} step={1} disabled={busy}
           value={renewDays} onChange={e=>setRenewDays(Number(e.target.value))}/>
       </label>}
-      {renewal?<p>{t("renewReview",{expiry:new Date(renewal.expiresAt).toLocaleString()})}</p>:
+      {renewal?<p>{t("renewReview",{expiry:format.dateTime(new Date(renewal.expiresAt),{...expiryInstant,timeZone})})}</p>:
         <Button type="button" disabled={busy} onClick={()=>void reviewRenewal()}>{t("renewPreview")}</Button>}
       {renewal&&<Button type="button" disabled={busy} onClick={()=>void confirmRenewal()}>
         {renewUncertain?t("renewRetry"):t("renewConfirm")}

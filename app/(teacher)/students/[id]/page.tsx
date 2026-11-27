@@ -145,7 +145,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       />
       <StudentContactsPanel studentId={id} />
       <StudentBillingAssignmentsPanel studentId={id} workplaces={sharingWorkplaces}/>
-      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces}/>
+      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces} timeZone={policy.timezone}/>
       <StudentChessProfileEditor
         studentId={id}
         initialAliases={student.name_aliases ?? []}
