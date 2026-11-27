@@ -5,7 +5,7 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 import {planCanonicalOccurrences,type CanonicalSlot} from "../lib/server/canonical-calendar-service";
 
-test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
+test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
   test.setTimeout(120_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const options={auth:{persistSession:false,autoRefreshToken:false}};
@@ -105,6 +105,13 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     await page.goto("/dashboard");
     const queue=page.getByRole("region",{name:"Coaching today"});
     await expect(queue.getByLabel("Coaching date")).toHaveValue(fmt.format(new Date()));
+    const agenda=page.locator("[data-home-agenda]");
+    await expect(agenda.locator('[data-next-lesson="true"]')).toContainText(prefix+"before midnight");
+    await expect(agenda.getByText("Next lesson",{exact:true})).toBeVisible();
+    await expect(agenda.locator("[data-agenda-date]")).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"canceled",{exact:true})).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"other school",{exact:true})).toHaveCount(0);
+    await page.screenshot({path:testInfo.outputPath("adaptive-home-desktop.png"),fullPage:true});
     await queue.getByLabel("Coaching date").fill(date);
     await queue.getByRole("button",{name:"Show lessons"}).click();
     await expect(page).toHaveURL(new RegExp("date="+date));
