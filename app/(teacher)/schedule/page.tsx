@@ -63,15 +63,19 @@ export default async function SchedulePage({
  // forward in history. Existing marked, noted, moved or paid occurrence IDs
  // are never overwritten by recurrence materialization.
  const normalEnd=addDays(teacherToday,56);
+ let materializationIncomplete=false;
  if(requestedSession===undefined){
-  await materializeCanonicalSessions(db,user.id,teacherToday,normalEnd);
-  if(weekStart<teacherToday||weekEnd>normalEnd)
-   await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
+  try{
+   await materializeCanonicalSessions(db,user.id,teacherToday,normalEnd);
+   if(weekStart<teacherToday||weekEnd>normalEnd)
+    await materializeCanonicalSessions(db,user.id,weekStart,weekEnd);
+  }catch{materializationIncomplete=true;}
  }
 
  const [calendar,slots,makeup,studentsRes,eventsRes]=
   await Promise.all([
-   canonicalCalendarWindow(db,user.id,weekStart,weekEnd,timezone,undefined,workplaceTimezones),
+   canonicalCalendarWindow(db,user.id,weekStart,weekEnd,timezone,undefined,workplaceTimezones)
+    .then(rows=>({ok:true as const,rows})).catch(()=>({ok:false as const,rows:[]})),
    canonicalSlotsList(db,user.id),
    canonicalMakeupCreditsList(db,user.id),
    db.from("students").select("id,name")
@@ -88,7 +92,8 @@ export default async function SchedulePage({
  const students=(studentsRes.data??[]).filter(s=>!currentStudentIds||currentStudentIds.has(s.id));
  // Global context affects presentation only: recurrence generation and frozen
  // historical lesson attribution are never mutated by changing a filter.
- const scopedCalendar=selection?calendar.filter(session=>session.workplace_id===selection):calendar;
+ const scopedCalendar=selection?calendar.rows.filter(session=>session.workplace_id===selection):calendar.rows;
+ const calendarStatus=!calendar.ok?"unavailable":materializationIncomplete?"partial":"ready";
  const scopedSlots=selection?slots.filter(slot=>slot.workplace_id===selection):slots;
  const scopedMakeup=selection?makeup.filter(credit=>credit.workplaceId===selection):makeup;
  const events=(eventsRes.data??[]).filter(event=>!selection||event.workplace_id===selection).map(event=>({
@@ -96,7 +101,7 @@ export default async function SchedulePage({
   localDate:formatEventDateKey(event.starts_at,(event.workplace_id&&workplaceTimezones[event.workplace_id])||policy.timezone),
  })).filter(event=>event.localDate>=weekStart&&event.localDate<=weekEnd);
 
- return <main className="space-y-6">
+ return <main className="space-y-6 ccp-calendar-page">
   <header>
    <h1 className="font-bold text-2xl">{t("heading")}</h1>
    <p className="text-muted text-sm mt-1">
@@ -105,11 +110,12 @@ export default async function SchedulePage({
   </header>
   {requestedSession!==undefined&&!noteTarget&&<p role="status">{t("lessonLinkUnavailable")}</p>}
   <CanonicalScheduleBoard
+   key={[anchorDate,view,selection??"all"].join(":")} calendarStatus={calendarStatus}
    weekStart={weekStart} rangeEnd={weekEnd} anchorDate={anchorDate} view={view} today={today} timezone={timezone} personalToday={teacherToday}
    selectedWorkplaceId={selection} workplaceTimezones={workplaceTimezones}
    sessions={scopedCalendar} events={events} students={students}
    workplaces={workplaces} durationOptions={policy.lesson_duration_options}/>
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 ccp-calendar-management">
    <CanonicalSlotManager slots={scopedSlots as Slot[]}
     students={students} workplaces={workplaces}
     today={today} personalToday={teacherToday} selectedWorkplaceId={selection} durationOptions={policy.lesson_duration_options}/>
