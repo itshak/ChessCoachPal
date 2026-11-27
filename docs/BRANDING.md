@@ -1,6 +1,6 @@
 # ChessCoachPal visual identity
 
-**Status:** Approved primary icon, 2026-11-08. The canonical vector asset is `public/icon/chesscoachpal.svg`; `app/icon.svg` is the identical Next.js favicon. `public/icon/chesscoachpal-maskable.svg` uses the same artwork with an inset foreground for Android adaptive masks.
+**Status:** Approved direction, 2026-11-27. Production adoption under draft PR #248; visual and CI acceptance pending.
 
 ## Positioning
 
@@ -14,37 +14,30 @@ Voice: friendly, precise and competent; never childish, robotic, glittery, or ov
 
 ## Approved symbol
 
-A recognizable ivory chess **knight as teacher**, facing a smaller **pawn as pupil**, standing over an **open book**. A teal arc conveys guidance and continuity; restrained gold edging evokes the value of teaching. Use the approved lightweight corrected vector asset, not the earlier rook/chat icon, headset variations, or a substituted generic knight.
+Mentor & Pupil is the primary logo; Compact Coaching Mark is the small-size variant. The exact approved knight contour, curved pawn foot and book geometry come from the approved prototype. Both pieces are Pearl (#F1F2F8) in dark and Graphite (#1C1D23) in light, with a Champagne book. The wordmark keeps ChessCoach unified and highlights Pal in Iris.
 
-- Master: `public/icon/chesscoachpal.svg`
-- Next icon: `app/icon.svg` (keep byte-identical to master)
-- PWA maskable: `public/icon/chesscoachpal-maskable.svg` (full-bleed midnight backdrop, composition inset within adaptive safe region)
-- Generated favicon and app PNGs: `public/icon/favicon.ico`, `public/icon/chesscoachpal-{16,32,48,64,128,180,192,256,512,1024}.png`, plus maskable `192`/`512` PNGs.
-- Apple touch icon uses the 180px PNG; Android PWA manifest includes 192px and 512px primary and maskable PNGs.
-- Rebuild all raster assets after editing the master: `python -m pip install cairosvg pillow && python scripts/export-brand-icons.py`. The source SVG, not individual PNGs, is authoritative.
-- Do not recolor individual logo elements independently of the website palette.
-- Preserve the full symbol on dark backgrounds and keep enough clear space around it; avoid clipping the ear, pawn, book point, or outer border.
+- Theme-specific masters: public/icon/chesscoachpal-{mentor,compact}-{dark,light}.svg.
+- Canonical favicon and PWA: public/icon/chesscoachpal.svg (compact dark), byte-identical app/icon.svg; maskable variant has an inset composition.
+- Generated favicon.ico and all existing PNG sizes use the new artwork. Rebuild with scripts/export-brand-icons.py; do not edit raster derivatives.
+- Optical framing uses the approved compact-large study (viewBox 155 125 940 940); inspect at 16, 32, 180 and 512 px before acceptance.
 
 ## Shared palette
 
-| Token | Hex | Application |
+| Role | Dark | Light |
 | --- | --- | --- |
-| Midnight background | `#0B1322` | Website default / logo outer field |
-| Deep navy surface | `#0D1829` | Cards, navigation and logo interior |
-| Deep teal surface | `#11293A` | Elevated panels |
-| Ivory text / figure | `#F8F2E8` | Dark-mode foreground and chess figure family |
-| Guide teal | `#23B7AB` | Primary highlights, links and icon arc |
-| Teal highlight | `#50DDCD` | Focus and highlights |
-| Deep teal | `#0A6F69` | Teal shadow and light-mode text accents |
-| Book gold | `#E6B447` | Sparse premium accents; not default button color |
+| Background | #1C1D23 | #F4F2F9 |
+| Surface | #272932 | #FFFFFF |
+| Foreground | #F1F2F8 | #292638 |
+| Muted | #BBC0D0 | #5D586F |
+| Iris primary | #B3A9E8 | #58418F |
+| Champagne accent | #CDB58D | #76572E |
+| Interactive border | #7A7E91 | #868098 |
 
-The master logo has **gradients** with tonal steps from these families, not a single flat color for each part. Dark mode uses the above palette by default on public pages and in the teacher UI. The teacher UI has an explicit opt-in light theme with an ivory base; it retains the recognizable navy/teal/gold identity.
-
-Core UI token definitions live in `app/globals.css`; PWA theme and background values live in `lib/pwa.ts`. Keep these and the SVG asset in sync. On the dark interface, text-heavy controls should prioritize accessible contrast, and the gold accent should remain restrained.
+Semantic success, warning and error roles are distinct from the accent; use on-primary and equivalent on-colors for solid buttons. See app/globals.css and lib/design-tokens.test.ts. Dark default; teacher light theme retained. PWA metadata follows the existing theme cookie.
 
 ## Typography
 
-Headings: Nunito. Body and functional UI: Inter. Favor ample spacing, readable data, and an efficient information hierarchy over ornament.
+Inter with Cyrillic and Noto Sans Hebrew fallback; logical alignment and bidirectional user content. Existing font-nunito references resolve to Inter during migration.
 
 ## Product messaging guardrails
 

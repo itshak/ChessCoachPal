@@ -9,6 +9,8 @@ import {Portal} from "@ark-ui/react/portal";
 import {BrandMark,Wordmark} from "@/components/brand/BrandMark";
 import "./workspace-shell.css";
 
+const brandLabel="ChessCoachPal";
+const shortcut="Ctrl K";
 const paths={
  home:"M3 10 12 3l9 7v11h-6v-7H9v7H3Z",
  calendar:"M3 6h18v15H3z M3 10h18 M7 3v5 M17 3v5",
@@ -50,13 +52,13 @@ export function WorkspaceShell({utilities,children}:{utilities:ReactNode;childre
  const isMore=secondary.some(x=>active(pathname,x.href))||primary.slice(4).some(x=>active(pathname,x.href))||active(pathname,"/account")||active(pathname,"/help");
  const navLink=(x:Destination)=> <Link key={x.href} href={x.href} data-tour={x.tour} aria-current={active(pathname,x.href)?"page":undefined} className="ccp-nav-link" onClick={()=>setDialog(null)}><Icon name={x.icon}/><span>{t(x.key)}</span></Link>;
  const more=(mobileTab=false)=><button type="button" className="ccp-nav-link" aria-haspopup="dialog" aria-expanded={dialog==="more"} aria-label={mobileTab?t("toggleNavigation"):t("moreOptions")} data-active={isMore||undefined} onClick={e=>open("more",e.currentTarget)}><Icon name="more"/><span>{t("more")}</span></button>;
- const brand=<Link className="ccp-shell-brand" href="/dashboard"><BrandMark size={36}/><Wordmark/></Link>;
+ const brand=<Link className="ccp-shell-brand" href="/dashboard" aria-label={brandLabel}><BrandMark size={36}/><Wordmark/></Link>;
  const focused=["/settings","/account","/ai-connections"].some(x=>active(pathname,x));
  const matches=destinations.filter(x=>t(x.key).toLocaleLowerCase(locale).includes(query.trim().toLocaleLowerCase(locale)));
  return <LocaleProvider locale={locale}><div className="ccp-shell">
   <a className="ccp-skip" href="#workspace-main">{t("skipToContent")}</a>
-  <div className="ccp-shell-sidebar">{brand}<nav aria-label={t("navigation")}>{primary.map(navLink)}{secondary.map(navLink)}</nav></div>
-  <div className="ccp-shell-topbar"><div className="ccp-top-brand">{brand}</div><div className="ccp-legacy-toolbar">{utilities}</div><button ref={search} className="ccp-search-trigger" type="button" aria-haspopup="dialog" aria-label={t("searchPages")} onClick={e=>open("search",e.currentTarget)}><Icon name="search"/><span>{t("searchPages")}</span><kbd>Ctrl K</kbd></button></div>
+  <div className="ccp-shell-sidebar">{brand}<nav aria-label={t("navigation")}>{primary.map(navLink)}{secondary.map(navLink)}{more()}</nav></div>
+  <div className="ccp-shell-topbar"><div className="ccp-top-brand">{brand}</div><div className="ccp-legacy-toolbar">{utilities}</div><button ref={search} className="ccp-search-trigger" type="button" aria-haspopup="dialog" aria-label={t("searchPages")} onClick={e=>open("search",e.currentTarget)}><Icon name="search"/><span>{t("searchPages")}</span><kbd>{shortcut}</kbd></button></div>
   <nav className="ccp-tablet-nav" aria-label={t("navigation")}>{primary.map(navLink)}{more()}</nav>
   <main id="workspace-main" className="ccp-shell-main" data-focused={focused||undefined} tabIndex={-1}>{children}</main>
   <nav className="ccp-mobile-nav" aria-label={t("mobileNavigation")}>{mobile.map(navLink)}{more(true)}</nav>
