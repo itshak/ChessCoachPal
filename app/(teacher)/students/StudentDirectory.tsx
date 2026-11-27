@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
+import {StudentDirectoryScroll} from "./StudentDirectoryScroll";
 import { Card } from "@/components/ui/card";
 import { AddStudentForm } from "@/components/teacher/AddStudentForm";
 import { ageFromBirthdate } from "@/lib/students";
@@ -138,6 +139,7 @@ export async function StudentDirectory({
               )}
             </Card>
           ) : (
+            <StudentDirectoryScroll ownerId={user.id} scopeKey={JSON.stringify([workplaceId,showArchived,query])}>
             <div className="flex min-w-0 flex-col gap-2">
               {students.map((student) => {
                 const age =
@@ -153,6 +155,7 @@ export async function StudentDirectory({
                     key={student.id}
                     href={detailHref(student.id)}
                     aria-current={current}
+                    id={"student-row-"+student.id}
                     data-student-directory-id={student.id}
                     className="block min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
                   >
@@ -186,6 +189,7 @@ export async function StudentDirectory({
                 );
               })}
             </div>
+            </StudentDirectoryScroll>
           )}
         </div>
 
