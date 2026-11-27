@@ -43,9 +43,9 @@ async function jsonResponse(res:Response){
  * participant, and all writes use the exact website/MCP domain operations.
  */
 export function CanonicalScheduleBoard({
- weekStart,rangeEnd,anchorDate,view,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
+ weekStart,rangeEnd,anchorDate,view,calendarStatus,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
 }:{
- weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
+ weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;calendarStatus:"ready"|"partial"|"unavailable";today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
  workplaceTimezones:Readonly<Record<string,string>>;
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
@@ -89,7 +89,11 @@ export function CanonicalScheduleBoard({
  const days=useMemo(()=>calendarDates(weekStart,rangeEnd),[weekStart,rangeEnd]);
  const openId=open?.id;
  useEffect(()=>{
-  if(openId&&window.matchMedia("(max-width:799px)").matches){window.scrollTo(0,0);detailRef.current?.focus();}
+  if(openId){
+   if(window.matchMedia("(max-width:799px)").matches)window.scrollTo(0,0);
+   else if(window.matchMedia("(max-width:1199px)").matches)detailRef.current?.scrollIntoView({block:"nearest"});
+   detailRef.current?.focus({preventScroll:true});
+  }
  },[openId]);
  function closeDetail(){
   setOpen(null);
@@ -284,7 +288,7 @@ export function CanonicalScheduleBoard({
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
   finally{setBusy(false)}
  }
- return <div className="space-y-5 ccp-calendar" data-detail-open={!!open}>
+ return <div className="space-y-5 ccp-calendar" data-detail-open={!!open} data-view={view}>
   <div className="ccp-calendar-controls flex flex-wrap gap-3 items-center justify-between">
    <div className="flex flex-wrap gap-3 items-center">
     <Link className="text-primary hover:underline" href={calendarHref(range.previous,view)}>{t("previous")}</Link>
@@ -294,7 +298,7 @@ export function CanonicalScheduleBoard({
    </div>
    <nav aria-label={words.view} className="flex flex-wrap gap-2">
     {(["agenda","week","month","day"] as const).map(mode=><Link key={mode}
-      aria-current={view===mode?"page":undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
+      data-view-choice={mode} aria-current={view===mode?"page":undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
       href={calendarHref(anchorDate,mode)}>{words[mode]}</Link>)}
    </nav>
    <form method="get" action="/schedule" className="flex flex-wrap gap-2 items-center">
@@ -350,6 +354,7 @@ export function CanonicalScheduleBoard({
    <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground text-sm"
     disabled={busy} onClick={addPrivateSession}>{t("createSession")}</button>
   </div>}
+  {calendarStatus!=="ready"&&<p role="alert">{calendarStatus==="partial"?words.partial:words.unavailable}</p>}
   <div className="ccp-calendar-workspace">
   <div className="ccp-calendar-list" data-view={view}>
    {days.map(date=><div key={date} data-calendar-date={date} data-empty={!byDay.get(date)?.length&&!events.some(e=>e.localDate===date)} className={
@@ -371,7 +376,7 @@ export function CanonicalScheduleBoard({
       </button>
       <div className="text-foreground [overflow-wrap:anywhere]">{session.participants.map(p=>p.name).join(", ")}</div>
       <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
-      <div className="flex flex-wrap gap-2 text-sm">
+      <div className="ccp-calendar-row-actions flex flex-wrap gap-2 text-sm">
        <button id={"lesson-attendance-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
        <button id={"lesson-notes-"+session.id} disabled={busy} className="text-primary hover:underline"
@@ -382,19 +387,19 @@ export function CanonicalScheduleBoard({
       </div>
      </div>)}
    </div>)}
-  {!sessions.length&&!events.length&&<p className="p-3" role="status">{words.empty}</p>}
+  {calendarStatus==="ready"&&!sessions.length&&!events.length&&<p className="p-3" role="status">{words.empty}</p>}
   </div>
   {open&&<div ref={detailRef} tabIndex={-1} role="dialog" aria-label={t("teachingSessionDetails")}
     className="ccp-calendar-detail min-w-0 border border-border bg-surface p-4 space-y-4">
    <div className="flex justify-between gap-2">
     <div>
-     <h2 className="font-semibold break-all">{open.title}</h2>
+     <h2 className="font-semibold [overflow-wrap:anywhere]"><bdi dir="auto">{open.title}</bdi></h2>
      <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone)}</p>
     </div>
     <button className="text-primary hover:underline text-sm" onClick={closeDetail}>{t("close")}</button>
    </div>
    <div className="flex gap-3 border-b border-border">
-    {(["attendance","notes","schedule"] as const).map(x=><button key={x}
+    {(["attendance","notes","schedule"] as const).map(x=><button key={x} disabled={busy}
       className={"pb-2 capitalize text-sm "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
       onClick={()=>openSession(open,x)}>{t(x)}</button>)}
    </div>
