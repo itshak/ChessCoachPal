@@ -71,7 +71,10 @@ export async function buildInvoicePdf(
   const locale=isAppLocale(input.locale)?input.locale:"en";
   const labels=communicationCopy[locale].invoice;
   const rtl=locale==="he";
-  const doc = await PDFDocument.create();
+  // The same reviewed invoice must download identically through either surface.
+  // pdf-lib's implicit timestamps describe the renderer clock, not the invoice.
+  const doc = await PDFDocument.create({updateMetadata:false});
+  doc.setProducer("ChessCoachPal");
   doc.setLanguage(localeDetails[locale].intl);
   doc.registerFontkit(fontkit);
   // Embedded, redistributed Bitstream/DejaVu Unicode fonts. Helvetica silently

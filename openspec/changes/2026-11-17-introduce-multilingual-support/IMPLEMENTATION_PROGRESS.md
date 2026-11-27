@@ -241,3 +241,20 @@
   tag/deployment must follow current-main release workflow; no shortcut to
   production is permitted. Manual real ChatGPT/Claude, screen-reader and live
   mail-provider acceptance remain unverified by automation.
+
+## Actual report downloads and deterministic private invoice PDFs
+
+For the same stored invoice and resolved locale, website and delegated MCP
+now render identical PDF files across different clock times. The exporter
+keeps its language tag and fixed producer metadata without attaching the
+renderer clock or personal names to document metadata. This does not pin
+the output to an old invoice revision: a changed line item, current paid
+balance, instructions, or recipient language can still change the artifact.
+No delivery, charge, financial write, or stored invoice migration is part
+of this change.
+
+The signed comparison covers actual browser CSV and text downloads against
+the delegated MCP UTF-8 exports for English, Hebrew, and Russian. It also
+compares signed website invoice PDF files byte-for-byte with delegated MCP
+files under each recipient language. No new controls, redesign, email send
+or native-client acceptance is claimed.

@@ -90,7 +90,7 @@ test("PARITY:PARITY-invoice-pdf-multipage-private-export preserves 150 line item
  }
 });
 
-test("PARITY: Hebrew and Russian recipient preferences select the SAME valid private invoice PDF via website and MCP",async({page,request})=>{
+test("PARITY: English, Hebrew and Russian preferences yield identical private invoice PDF bytes via website and MCP",async({page,request})=>{
  const call=await delegatedTool(page,request);
  const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
    process.env.SUPABASE_SERVICE_ROLE_KEY!,{
@@ -102,7 +102,7 @@ test("PARITY: Hebrew and Russian recipient preferences select the SAME valid pri
    });
  expect((await db.auth.signInWithPassword(SEED_TEACHER)).error).toBeNull();
  const teacherId=(await db.auth.getUser()).data.user!.id;
- for(const locale of ["he","ru"] as const){
+ for(const locale of ["en","he","ru"] as const){
   const family=await insertTestBillingAccount(admin,{teacherId:teacherId,displayName:"יוסף Петров "+randomUUID(),email:"locale-pdf-"+randomUUID()+"@example.com",preferredLocale:locale});
   expect(family.error).toBeNull();
   const id=family.data!.id;
@@ -130,7 +130,7 @@ test("PARITY: Hebrew and Russian recipient preferences select the SAME valid pri
   expect(viaModel.error).toBeUndefined();
   const mcpBytes=Buffer.from(viaModel.data.base64,"base64");
   expect(mcpBytes.subarray(0,5).toString()).toBe("%PDF-");
-  expect((await PDFDocument.load(mcpBytes)).getPageCount()).toBe(webPdf.getPageCount());
+  expect(mcpBytes.equals(webBytes),locale+" site and MCP must deliver identical PDF bytes").toBe(true);
   expect(mcpBytes.length).toBeLessThanOrEqual(512*1024);
  }
 });
