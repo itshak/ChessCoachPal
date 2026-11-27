@@ -66,7 +66,7 @@ export function RecentTeaching({model,locale}:{model:HomeAgendaModel;locale:stri
   <time dateTime={session.starts_at} className="text-muted"><bdi>{new Intl.DateTimeFormat(locale,{
    timeZone:session.sessionTimeZone??model.timeZone,dateStyle:"medium",timeStyle:"short"
   }).format(new Date(session.starts_at))}</bdi></time>
-  <Link className="font-medium text-primary underline min-w-0 [overflow-wrap:anywhere]" href={"/schedule?session="+session.id}>
+  <Link className="font-medium text-primary underline min-w-0 [overflow-wrap:anywhere]" href={"/schedule?session="+session.id+"#calendar-detail-"+session.id}>
    <bdi dir="auto">{session.title}</bdi>
   </Link>
   {session.status!=="completed"&&<span className="text-muted">{session.status==="scheduled"?w.scheduled:session.status==="cancelled"?w.cancelled:w.other}</span>}
