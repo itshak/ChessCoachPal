@@ -13,10 +13,23 @@ export class TeacherOverviewError extends Error {
 }
 type Db = SupabaseClient;
 
+const upcomingCursor=z.string().max(180).transform((value,ctx)=>{
+  const parts=value.split("~");
+  const shape=z.tuple([
+    z.iso.date(),z.union([z.literal("all"),z.uuid()]),
+    z.string().max(80).regex(/^[A-Za-z0-9_+./-]+$/),z.iso.datetime({offset:true}),z.uuid(),
+  ]).safeParse(parts);
+  if(shape.success)return shape.data;
+  ctx.addIssue({code:"custom",message:"Expected an upcoming lesson continuation cursor"});
+  return z.NEVER;
+});
+
 export const teacherDashboardSummaryInput = z.object({
   workplaceId: z.string().uuid().nullable().optional(),
   date: z.iso.date().refine(value => value >= "1900-01-01" && value <= "9998-12-31",
     "Expected a real YYYY-MM-DD date between 1900-01-01 and 9998-12-31").optional(),
+  upcomingAfter:z.string().max(180).refine(value=>upcomingCursor.safeParse(value).success,
+    "Expected an upcoming lesson continuation cursor").optional(),
   closeReview: z.literal(true).optional(),
   ratingFreshness: z.literal(true).optional(),
   homeworkAfter: z.string().max(58).refine(value => {
@@ -28,6 +41,9 @@ export const teacherDashboardSummaryInput = z.object({
 }).strict().refine(value => value.homeworkAfter === undefined ||
   (value.date !== undefined && value.homeworkAfter.slice(0, 10) === value.date),
   "Homework continuation requires a matching due-through date")
+  .refine(value=>value.upcomingAfter===undefined||
+    (value.date!==undefined&&value.upcomingAfter.slice(0,10)===value.date),
+    "Upcoming continuation requires the same civil date")
   .refine(value => value.closeReview === undefined || value.date !== undefined,
     "Day-end review requires an explicit civil date")
   .refine(value => value.ratingFreshness === undefined || value.date !== undefined,
@@ -149,7 +165,7 @@ async function dailyMissingAttendance(db: Db, teacherId: string, scope: Dashboar
   };
 }
 
-async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
+async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, requestedDate?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false, upcomingAfter?:string) {
   const venue = scope.workplaceId ? await db.from("workplaces")
     .select("timezone").eq("teacher_id", teacherId).eq("id", scope.workplaceId).maybeSingle() : null;
   if (venue && (venue.error || !venue.data))
@@ -163,10 +179,24 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
   const dayStart = zonedTimeToUtc(date, "00:00", timeZone);
   const dayEnd = zonedTimeToUtc(addDays(date, 1), "00:00", timeZone);
   const from = new Date(Math.max(scope.now.getTime(), dayStart.getTime()));
-  const query = () => db.from("teaching_sessions").select("id,title,starts_at,duration_minutes,workplace_id")
-    .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
-    .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
-    .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
+  const venueKey=scope.workplaceId??"all";
+  const parsed=upcomingAfter===undefined?null:upcomingCursor.safeParse(upcomingAfter);
+  if(parsed&&(!parsed.success||parsed.data[0]!==date||parsed.data[1]!==venueKey||
+    parsed.data[2]!==timeZone||Date.parse(parsed.data[3])<dayStart.getTime()||
+    Date.parse(parsed.data[3])>=dayEnd.getTime()))
+    throw new TeacherOverviewError(400,"Upcoming continuation does not match this date, workplace and timezone");
+  const query = () => {
+    let rows=db.from("teaching_sessions").select("id,title,starts_at,duration_minutes,workplace_id")
+      .eq("teacher_id", teacherId).match(workplaceMatch(scope)).eq("status", "scheduled")
+      .gte("starts_at", from.toISOString()).lt("starts_at", dayEnd.toISOString())
+      .order("starts_at").order("id").limit(DAILY_LIMIT + 1);
+    if(parsed?.success){
+      const [, , , startsAt, id]=parsed.data;
+      // Only the strict timestamp and UUID grammar can reach this filter.
+      rows=rows.or(`starts_at.gt.${startsAt},and(starts_at.eq.${startsAt},id.gt.${id})`);
+    }
+    return rows;
+  };
   const [result, attendance, homework, ratingReview, ratingFreshness] = await Promise.all([
     from < dayEnd ? query() : { data: [], error: null },
     dailyMissingAttendance(db, teacherId, scope, dayStart, dayEnd, includeCloseReview)
@@ -181,15 +211,19 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
         .catch(()=>({status:"unavailable" as const})),
   ]);
   if (result.error || !result.data) throw new TeacherOverviewError(500, "Daily lessons unavailable");
-  return { date, timeZone, limit: DAILY_LIMIT, truncated: result.data.length > DAILY_LIMIT,
-    sessions: result.data.slice(0, DAILY_LIMIT), ...attendance, homework, ratingReview, ...(ratingFreshness ? {ratingFreshness} : {}) };
+  const sessions=result.data.slice(0, DAILY_LIMIT);
+  const last=sessions.at(-1);
+  const truncated=result.data.length>DAILY_LIMIT;
+  const nextUpcomingAfter=truncated&&last?[date,venueKey,timeZone,last.starts_at,last.id].join("~"):null;
+  return { date, timeZone, limit: DAILY_LIMIT, truncated, nextUpcomingAfter,
+    sessions, ...attendance, homework, ratingReview, ...(ratingFreshness ? {ratingFreshness} : {}) };
 }
 
-export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
+export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false, upcomingAfter?:string) {
   const scope = await dashboardScope(db, teacherId, requested);
   if (date === undefined) return dashboardSummary(db, teacherId, scope);
   const [summary, daily] = await Promise.all([
-    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness),
+    dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness, upcomingAfter),
   ]);
   return { ...summary, daily };
 }
@@ -212,7 +246,7 @@ async function dashboardStudents(db: Db, teacherId: string, studentIds: Set<stri
   return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).slice(0, 9);
 }
 
-export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false) {
+export async function teacherDashboardPageModel(db: Db, teacherId: string, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false, upcomingAfter?:string) {
   const scope = await dashboardScope(db, teacherId);
   const sessions = () => db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes").eq("teacher_id", teacherId).match(workplaceMatch(scope));
@@ -223,7 +257,7 @@ export async function teacherDashboardPageModel(db: Db, teacherId: string, date?
     sessions().gte("starts_at", now).order("starts_at").limit(6),
     sessions().lt("starts_at", now).order("starts_at", { ascending: false }).limit(5),
     db.from("teachers").select("display_name").eq("id", teacherId).maybeSingle(),
-    dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness).catch(() => null),
+    dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness, upcomingAfter).catch(() => null),
   ]);
   if (upcoming.error || recent.error || teacher.error) throw new TeacherOverviewError(500, "Dashboard unavailable");
   return { summary, students, upcoming: upcoming.data, recent: recent.data, teacher: teacher.data, daily };

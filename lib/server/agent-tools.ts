@@ -310,7 +310,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, read bounded upcoming lessons, frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
+    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, read bounded upcoming lessons (continue with daily.nextUpcomingAfter as upcomingAfter for the same date and workplace), frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
@@ -2822,8 +2822,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
       case "ccp_dashboard_summary": {
-        const { workplaceId, date, homeworkAfter, closeReview, ratingFreshness } = args as z.infer<typeof teacherDashboardSummaryInput>;
-        return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date, homeworkAfter, closeReview, ratingFreshness) };
+        const { workplaceId, date, homeworkAfter, closeReview, ratingFreshness, upcomingAfter } = args as z.infer<typeof teacherDashboardSummaryInput>;
+        try{
+          return {data:await teacherDashboardSummary(db,teacherId,workplaceId,date,homeworkAfter,closeReview,ratingFreshness,upcomingAfter)};
+        }catch(error){
+          if(error instanceof TeacherOverviewError && error.status===400)
+            return {error:{code:"VALIDATION_ERROR",message:error.message}};
+          throw error;
+        }
       }
       case "ccp_professional_credit_expiry_get":
         return {data:await teacherProfessionalCreditExpiry(db,teacherId,args as z.infer<typeof professionalCreditExpiryInput>)};

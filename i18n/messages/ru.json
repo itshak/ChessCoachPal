@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "Записать и завершить урок «{title}»",
+    "dailyUpcomingNext": "Следующие уроки на эту дату",
+    "dailyUpcomingFirst": "К первым урокам",
     "dailyPrepareOpen": "Подготовить {title}",
     "dailyPrepareHeading": "Подготовка к уроку",
     "dailyPrepareInvalid": "Выберите допустимый урок.",

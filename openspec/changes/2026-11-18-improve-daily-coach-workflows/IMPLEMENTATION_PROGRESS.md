@@ -271,3 +271,15 @@ review window. Paused/completed plans and achieved/abandoned goals are
 excluded. No goal text, target dates, IDs, or learner identities are
 returned. Unknown roster, unavailable data, and a count withheld above the
 100-plan bound remain distinct from zero. No write or mastery inference.
+
+
+### Continue a full day of upcoming lessons
+
+A date page can continue after its last lesson, in database order by exact
+start instant and lesson ID. Several lessons at the same instant are not
+skipped or repeated at the boundary. The cursor binds to the same civil
+date, resolved owned workplace or All, and queue timezone. Invalid or stale
+scope is not used to read another workplace, and the website offers a return
+to the first page. The list deliberately reads the current schedule as it
+changes; a lesson that has since started or been cancelled is not frozen
+into an earlier page. No recurrence, attendance or write is triggered.

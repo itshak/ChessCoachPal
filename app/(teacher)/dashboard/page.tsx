@@ -10,7 +10,7 @@ import {professionalCreditExpiryInput,teacherProfessionalCreditExpiry} from "@/l
 export async function generateMetadata() {const t=await getTranslations("dashboard");return {title:t("title")};}
 
 export default async function DashboardPage({ searchParams }: {
-  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; ratingFreshness?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
+  searchParams: Promise<{ date?: string | string[]; homeworkAfter?: string | string[]; upcomingAfter?: string | string[]; prepareSession?: string | string[]; closeReview?: string | string[]; ratingFreshness?: string | string[]; creditExpiryWorkplace?: string | string[] }>;
 }) {
   const t=await getTranslations("dashboard");
   const locale=await getLocale();
@@ -18,14 +18,14 @@ export default async function DashboardPage({ searchParams }: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { date: rawDate, homeworkAfter, prepareSession, closeReview: rawCloseReview, ratingFreshness: rawFreshness, creditExpiryWorkplace } = await searchParams;
-  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter,
+  const { date: rawDate, homeworkAfter, upcomingAfter, prepareSession, closeReview: rawCloseReview, ratingFreshness: rawFreshness, creditExpiryWorkplace } = await searchParams;
+  const filters = teacherDashboardSummaryInput.safeParse({ date: rawDate, homeworkAfter, upcomingAfter,
     closeReview: rawCloseReview === undefined ? undefined : rawCloseReview === "1",
     ratingFreshness: rawFreshness === undefined ? undefined : rawFreshness === "1" });
   const { summary, students, upcoming, recent, teacher, daily } =
     await teacherDashboardPageModel(supabase, user.id, filters.success ? filters.data.date : undefined,
       filters.success ? filters.data.homeworkAfter : undefined, filters.success && filters.data.closeReview,
-      filters.success && filters.data.ratingFreshness);
+      filters.success && filters.data.ratingFreshness, filters.success ? filters.data.upcomingAfter : undefined);
   const creditInput=professionalCreditExpiryInput.safeParse({workplaceId:creditExpiryWorkplace});
   const creditExpiry=creditInput.success
     ? await teacherProfessionalCreditExpiry(supabase,user.id,creditInput.data).catch(()=>null) : null;
@@ -52,6 +52,20 @@ export default async function DashboardPage({ searchParams }: {
     ...(filters.success&&filters.data.closeReview?{closeReview:"1"}:{}),
     ...(filters.success&&filters.data.homeworkAfter?{homeworkAfter:filters.data.homeworkAfter}:{}),
   })+"#daily-rating-freshness";
+
+  function upcomingHref(after?:string,prepare?:string){
+    const state=new URLSearchParams();
+    if(daily?.date)state.set("date",daily.date);
+    else if(typeof rawDate==="string")state.set("date",rawDate);
+    if(filters.success){
+      if(filters.data.homeworkAfter)state.set("homeworkAfter",filters.data.homeworkAfter);
+      if(filters.data.closeReview)state.set("closeReview","1");
+      if(filters.data.ratingFreshness)state.set("ratingFreshness","1");
+    }
+    if(after)state.set("upcomingAfter",after);
+    if(prepare)state.set("prepareSession",prepare);
+    return "/dashboard?"+state.toString()+(prepare?"#lesson-preparation":"#daily-coaching");
+  }
 
   const pendingShown = new Set(closeReview?.status === "ready" ? closeReview.sessions.map(row => row.id) : []);
   const attendanceTasks = daily?.missingAttendance.status === "ready"
@@ -122,8 +136,7 @@ export default async function DashboardPage({ searchParams }: {
                         <time dateTime={session.starts_at}>{dailyTime.format(new Date(session.starts_at))}</time>
                         {" · "}{t("minutes", { count: session.duration_minutes })}
                       </p>
-                      <Link className="text-primary underline" href={"/dashboard?date="+daily.date+
-                        "&prepareSession="+session.id+"#lesson-preparation"}>
+                      <Link className="text-primary underline" href={upcomingHref(filters.data.upcomingAfter,session.id)}>
                         {t("dailyPrepareOpen",{title:session.title})}
                       </Link>
                     </Card>
@@ -131,8 +144,13 @@ export default async function DashboardPage({ searchParams }: {
                 ))}
               </ul>
             )}
-            {daily.truncated && <p className="mt-2">{t("dailyTruncated", { count: daily.limit })}</p>}
+            {daily.truncated && !filters.data.upcomingAfter &&
+              <p className="mt-2">{t("dailyTruncated", {count:daily.limit})}</p>}
+            {daily.nextUpcomingAfter && <Link className="text-primary underline"
+              href={upcomingHref(daily.nextUpcomingAfter)}>{t("dailyUpcomingNext")}</Link>}
           </>}
+        {upcomingAfter!==undefined && <Link className="text-primary underline"
+          href={upcomingHref()}>{t("dailyUpcomingFirst")}</Link>}
       </section>
 
       {preparation && <section aria-labelledby="lesson-preparation" className="mb-8">

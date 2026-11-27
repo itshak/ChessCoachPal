@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "תיעוד והשלמה של {title}",
+    "dailyUpcomingNext": "השיעורים הבאים בתאריך זה",
+    "dailyUpcomingFirst": "חזרה לשיעורים הראשונים",
     "dailyPrepareOpen": "הכנת {title}",
     "dailyPrepareHeading": "הכנת שיעור",
     "dailyPrepareInvalid": "יש לבחור שיעור תקין.",
