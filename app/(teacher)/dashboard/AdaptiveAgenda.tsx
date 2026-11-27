@@ -18,16 +18,16 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
  const visibleNext=model.next&&rows.some(row=>row.id===model.next?.id);
  const incomplete=model.days.some(day=>day.status!=="ready"||day.nextAfter);
  const row=(session:AgendaRow,withDate=false)=><li key={session.id} data-session-id={session.id} data-next-lesson={session.id===model.next?.id}
-  className={"flex flex-wrap items-start gap-x-4 gap-y-1 border-b border-border py-3 min-w-0 "+(session.id===model.next?.id?"border-s-2 border-s-primary ps-3":"")}>
+  className={"flex flex-wrap items-start gap-x-4 gap-y-1 border-b border-border py-3 min-w-0 "+(session.id===model.next?.id?"border-s-2 border-s-primary ps-3":"")+(selectedId===session.id?" bg-primary/5":"")}>
   <time dateTime={session.starts_at} className="font-medium tabular-nums shrink-0">
    <bdi>{(withDate?instantFormat:timeFormat).format(new Date(session.starts_at))}</bdi>
   </time>
   <div className="flex-1 min-w-0">
    {session.id===model.next?.id&&<p className="text-primary font-medium">{w.next}</p>}
    <p className="font-semibold [overflow-wrap:anywhere]"><bdi dir="auto">{session.title}</bdi></p>
-   <p className="text-muted">{t("minutes",{count:session.duration_minutes})}</p>
+   <p className="text-muted"><bdi dir="auto">{model.workplaceNames[session.workplace_id]??w.venueUnavailable}</bdi>{" · "}{t("minutes",{count:session.duration_minutes})}</p>
    {session.sessionTimeZone&&session.sessionTimeZone!==model.timeZone&&<p className="text-muted">
-    {w.workplaceZone}{": "}<bdi>{session.sessionTimeZone}</bdi>
+    {w.localTime}{": "}<bdi>{new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:session.sessionTimeZone}).format(new Date(session.starts_at))}{" · "}{session.sessionTimeZone}</bdi>
    </p>}
   </div>
   <Link href={agendaHref(model.start,session.id)} aria-current={selectedId===session.id?"true":undefined}
