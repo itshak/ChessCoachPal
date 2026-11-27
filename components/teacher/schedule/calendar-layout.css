@@ -4,7 +4,9 @@
 .ccp-calendar-list[data-view="agenda"] .ccp-calendar-day[data-empty="true"] {display:none}
 .ccp-calendar-mobile-count {display:none}
 .ccp-calendar-detail {min-width:0;overflow-wrap:anywhere}
-.ccp-calendar-record button {min-height:2rem}
+.ccp-calendar-record button {min-height:2.25rem}
+.ccp-calendar-detail :is(button,a):focus-visible,.ccp-calendar-record button:focus-visible {outline:2px solid currentColor;outline-offset:3px}
+.ccp-calendar-detail > div:first-child h2 {font-size:1.25rem;line-height:1.35}
 .ccp-calendar-list [aria-pressed="true"] {text-decoration:underline;text-underline-offset:.2em}
 .ccp-calendar-list[data-view="month"] {grid-template-columns:repeat(7,minmax(0,1fr))}
 .ccp-calendar-list[data-view="month"] > .ccp-calendar-day {border:1px solid var(--border);min-height:5rem}
@@ -13,10 +15,10 @@
  .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) {grid-template-columns:repeat(7,minmax(0,1fr))}
  .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) .ccp-calendar-day {min-height:8rem}
 }
-@media(min-width:1200px){
+@media(min-width:1280px){
  .ccp-calendar[data-detail-open="true"] .ccp-calendar-workspace {grid-template-columns:minmax(0,1fr) minmax(18rem,24rem)}
  .ccp-calendar[data-detail-open="true"] .ccp-calendar-list:is([data-view="auto"],[data-view="week"],[data-view="month"]) {grid-template-columns:repeat(7,minmax(6rem,1fr));overflow-x:auto}
- .ccp-calendar-detail {position:sticky;top:1rem}
+ .ccp-calendar-detail {position:sticky;top:1rem;max-height:calc(100dvh - 2rem);overflow-y:auto}
 }
 @media(max-width:799px){
  .ccp-calendar-list[data-view="auto"] .ccp-calendar-day[data-empty="true"] {display:none}
@@ -37,4 +39,13 @@
  .ccp-calendar-page:has(.ccp-calendar[data-detail-open="true"]) > .ccp-calendar-management {display:none}
  .ccp-calendar-page:has(.ccp-calendar[data-detail-open="true"]) > header {display:none}
  .ccp-calendar-list[data-view="month"] .ccp-calendar-day > a:first-child {font-size:.85rem;line-height:1.2}
+}
+
+@media (min-width:800px) and (max-width:1279px){
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-workspace {grid-template-columns:minmax(0,1fr) minmax(16rem,22rem)}
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-list:is([data-view="auto"],[data-view="week"],[data-view="month"]) {grid-template-columns:repeat(7,minmax(5.5rem,1fr));overflow-x:auto}
+}
+@media(max-width:799px){
+ .ccp-calendar-detail {border:0;padding:0;min-height:calc(100dvh - 9rem)}
+ .ccp-calendar-detail button {min-height:2.75rem}
 }
