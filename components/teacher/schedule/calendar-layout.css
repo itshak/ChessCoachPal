@@ -9,7 +9,7 @@
 .ccp-calendar-detail > div:first-child h2 {font-size:1.25rem;line-height:1.35}
 .ccp-calendar-list [aria-pressed="true"] {text-decoration:underline;text-underline-offset:.2em}
 .ccp-calendar-list[data-view="month"] {grid-template-columns:repeat(7,minmax(0,1fr))}
-.ccp-calendar-list[data-view="month"] > .ccp-calendar-day {border:1px solid var(--border);min-height:5rem}
+.ccp-calendar-list[data-view="month"] > .ccp-calendar-day {border:1px solid var(--color-border-subtle);min-height:5rem}
 .ccp-calendar-list > [role="status"] {grid-column:1/-1}
 @media(min-width:800px){
  .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) {grid-template-columns:repeat(7,minmax(0,1fr))}

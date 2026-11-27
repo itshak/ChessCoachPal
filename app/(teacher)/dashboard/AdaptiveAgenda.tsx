@@ -19,7 +19,8 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
  const incomplete=model.days.some(day=>day.status!=="ready"||day.nextAfter);
  const selectedCurrent="true" as const;
  const row=(session:AgendaRow,withDate=false)=><li key={session.id} data-session-id={session.id} data-next-lesson={session.id===model.next?.id}
-  className={"flex flex-wrap items-start gap-x-4 gap-y-1 border-b border-border py-3 min-w-0 "+(session.id===model.next?.id?"border-s-2 border-s-primary ps-3":"")+(selectedId===session.id?" bg-primary/5":"")}>
+  className="border-b border-border min-w-0">
+  <Link id={"agenda-record-"+session.id} href={agendaHref(model.start,session.id)} aria-current={selectedId===session.id?selectedCurrent:undefined} aria-label={t("dailyPrepareOpen",{title:session.title})} className="ccp-agenda-link" prefetch={false}>
   <time dateTime={session.starts_at} className="font-medium tabular-nums shrink-0">
    <bdi>{(withDate?instantFormat:timeFormat).format(new Date(session.starts_at))}</bdi>
   </time>
@@ -31,8 +32,8 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
     {w.localTime}{": "}<bdi>{new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:session.sessionTimeZone}).format(new Date(session.starts_at))}{" · "}{session.sessionTimeZone}</bdi>
    </p>}
   </div>
-  <Link href={agendaHref(model.start,session.id)} aria-current={selectedId===session.id?selectedCurrent:undefined}
-   className="text-primary underline underline-offset-2 py-1" prefetch={false}>{t("dailyPrepareOpen",{title:session.title})}</Link>
+  <span aria-hidden="true" className="text-muted rtl:rotate-180">›</span>
+  </Link>
  </li>;
  return <div className="space-y-4 min-w-0" data-home-agenda>
   <div className="flex flex-wrap gap-3 items-center justify-between">

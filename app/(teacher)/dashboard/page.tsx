@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {RouteMasterDetail} from "@/components/ui/workspace-layout";
 import {getLocale,getTranslations} from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
@@ -82,14 +83,16 @@ export default async function DashboardPage({ searchParams }: {
     ? daily.missingAttendance.sessions.filter(row => !pendingShown.has(row.id)) : [];
 
   const dailyHeadingClass=home?"sr-only":"text-lg font-semibold mb-3";
+  const mobileDetail=Boolean(prepareSession!==undefined&&preparation);
+  const backHref=home?"/dashboard?"+new URLSearchParams({agendaStart:home.start})+(typeof prepareTarget==="string"?"#agenda-record-"+prepareTarget:"#daily-coaching"):upcomingHref(filters.success?filters.data.upcomingAfter:undefined);
   return (
-    <div>
+    <div className="ccp-home-page" data-mobile-detail={mobileDetail}>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold ccp-mobile-sr-only">
             {words.overview}
           </h1>
-          <p className="text-sm text-muted mt-1">
+          <p className="text-sm text-muted mt-1 ccp-home-welcome">
             {teacher?.display_name?t("welcome",{name:teacher.display_name}):null}
           </p>
         </div>
@@ -98,8 +101,9 @@ export default async function DashboardPage({ searchParams }: {
         </Link>
       </div>
 
-      <div className={"grid gap-6 min-w-0 items-start "+(preparation?"min-[800px]:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]":"")}>
-      <section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
+      <div className="ccp-home-workspace">
+      <RouteMasterDetail key={typeof prepareTarget==="string"?prepareTarget:"agenda"} mobileDetail={mobileDetail} backHref={backHref} masterLabel={words.agenda} detailLabel={t("dailyPrepareHeading")}
+      master={<section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
         <h2 id="daily-coaching" className={dailyHeadingClass}>{t("dailyHeading")}</h2>
         {home&&<AdaptiveAgenda model={home} locale={locale} selectedId={typeof prepareTarget==="string"?prepareTarget:undefined}/>}
 
@@ -141,9 +145,8 @@ export default async function DashboardPage({ searchParams }: {
           </>}
         {upcomingAfter!==undefined && <Link className="text-primary underline"
           href={upcomingHref()}>{t("dailyUpcomingFirst")}</Link>}
-      </section>
-
-      {preparation && <section aria-labelledby="lesson-preparation" className="mb-6 min-w-0 border-s border-border ps-4 [overflow-wrap:anywhere] xl:sticky xl:top-4">
+      </section>}
+      detail={preparation && <section aria-labelledby="lesson-preparation" className="mb-6 min-w-0 [overflow-wrap:anywhere]">
         <h2 id="lesson-preparation" className="text-lg font-semibold mb-3">{t("dailyPrepareHeading")}</h2>
         {preparation.kind !== "ready" ? <p role="alert">{t(preparation.kind === "invalid" ? "dailyPrepareInvalid"
           : preparation.kind === "not_found" ? "dailyPrepareNotFound" : "dailyPrepareUnavailable")}</p> : <>
@@ -178,8 +181,7 @@ export default async function DashboardPage({ searchParams }: {
               <p>{t("dailyPrepareNoMastery")}</p>
             </div>}
         </>}
-      </section>}
-
+      </section>}/>
       </div>
       {home&&!home.next&&<div className="mb-8"><RecentTeaching model={home} locale={locale}/></div>}
       <h2 className="text-xl font-semibold mb-4">{words.attention}</h2>

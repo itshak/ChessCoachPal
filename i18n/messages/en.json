@@ -36,7 +36,9 @@
     "workplaceFilter": "Active workplace context",
     "allWorkplaces": "All workplaces",
     "workplaceFilterFallback": "Previous workplace unavailable. Showing all workplaces.",
-    "workplaceFilterFailed": "Could not change workplace; reload"
+    "workplaceFilterFailed": "Could not change workplace; reload",
+    "showDetails": "Show details",
+    "hideDetails": "Hide details"
   },
   "dashboard": {
     "dailyCloseOpen": "Record and complete {title}",

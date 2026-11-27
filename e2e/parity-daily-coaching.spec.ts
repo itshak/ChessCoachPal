@@ -67,6 +67,11 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     expect((await tool("ccp_workplace_context_set",{
       selectedWorkplaceId:a,expectedSelectedWorkplaceId:null,confirmed:true,
     })).error).toBeUndefined();
+    // Prove the exact next read does not depend on the descending 100-row
+    // discovery cap or the first six future records of arbitrary status.
+    const earlyCancelled=Array.from({length:7},(_,i)=>({teacher_id,workplace_id:a,group_id:group,title:prefix+"earlier cancelled "+i,local_timezone:zone,duration_minutes:20,status:"cancelled",starts_at:new Date(Date.parse(date+"T04:00:00Z")-(i+1)*86400000).toISOString()}));
+    const laterScheduled=Array.from({length:101},(_,i)=>({teacher_id,workplace_id:a,group_id:group,title:prefix+"later "+i,local_timezone:zone,duration_minutes:20,status:"scheduled",starts_at:new Date(Date.parse(date+"T04:00:00Z")+(i+50)*86400000).toISOString()}));
+    expect((await admin.from("teaching_sessions").insert([...earlyCancelled,...laterScheduled])).error).toBeNull();
     const api="/api/dashboard/summary";
     const read=async(query:string,args:Record<string,unknown>)=>{
       const response=await page.request.get(api+query);
@@ -115,6 +120,15 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     await expect(agenda.getByText(prefix+"canceled",{exact:true})).toHaveCount(0);
     await expect(agenda.getByText(prefix+"other school",{exact:true})).toHaveCount(0);
     await page.screenshot({path:testInfo.outputPath("adaptive-home-desktop.png"),fullPage:true});
+    const homeViewport=page.viewportSize();
+    await page.setViewportSize({width:390,height:844});
+    await agenda.getByRole("link",{name:"Prepare "+prefix+"before midnight"}).click();
+    await expect(page.locator(".ccp-home-workspace .ccp-inspector")).toBeVisible();
+    await expect(queue).toBeHidden();
+    await page.screenshot({path:testInfo.outputPath("adaptive-home-mobile-detail.png"),fullPage:true});
+    await page.getByRole("button",{name:"Back",exact:true}).click();
+    await expect(queue).toBeVisible();
+    if(homeViewport)await page.setViewportSize(homeViewport);
     await queue.getByLabel("Coaching date").fill(date);
     await queue.getByRole("button",{name:"Show lessons"}).click();
     await expect(page).toHaveURL(new RegExp("date="+date));

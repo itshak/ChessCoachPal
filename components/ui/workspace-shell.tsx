@@ -8,6 +8,7 @@ import {LocaleProvider} from "@ark-ui/react/locale";
 import {Portal} from "@ark-ui/react/portal";
 import {BrandMark,Wordmark} from "@/components/brand/BrandMark";
 import "./workspace-shell.css";
+import "./workspace-layout.css";
 
 const brandLabel="ChessCoachPal";
 const shortcut="Ctrl K";
@@ -39,10 +40,10 @@ const secondary=[
  {href:"/events",key:"events",icon:"calendar",tour:"events"},
  {href:"/billing",key:"billing",icon:"reports",tour:"billing"},
 ] as const;
-const mobile=[...primary.slice(0,3),{href:"/coaching",key:"capture",icon:"capture",tour:"coaching"}] as const;
+const mobile=[...primary.slice(0,3),{href:"/coaching?capture=1",key:"capture",icon:"capture",tour:"coaching"}] as const;
 const destinations=[...primary,...secondary,{href:"/account",key:"account",icon:"settings",tour:"account"},{href:"/help",key:"help",icon:"learning",tour:"help"}] as const;
 type Destination=(typeof destinations)[number]|(typeof mobile)[number];
-function active(path:string,href:string){return path===href||path.startsWith(href+"/");}
+function active(path:string,href:string){const route=href.split("?")[0];return path===route||path.startsWith(route+"/");}
 export function WorkspaceShell({utilities,children}:{utilities:ReactNode;children:ReactNode}){
  const t=useTranslations("nav"),locale=useLocale(),pathname=usePathname()||"";
  const [dialog,setDialog]=useState<"search"|"more"|null>(null),[query,setQuery]=useState("");

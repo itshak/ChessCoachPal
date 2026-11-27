@@ -1,5 +1,7 @@
 "use client";
-import {useId,type ReactNode} from "react";
+import {useId,useState,type ReactNode} from "react";
+import {useRouter} from "next/navigation";
+import {useTranslations} from "next-intl";
 import Link from "next/link";
 import "./workspace-layout.css";
 
@@ -23,6 +25,14 @@ export function MasterDetail({master,detail,masterLabel,detailLabel,detailOpen,o
    {detail}
   </aside>
  </div>;
+}
+/** URL selection is authoritative for server-rendered records. Collapsing the
+ * desktop inspector is presentation state, and mobile Back keeps the list URL. */
+export function RouteMasterDetail({master,detail,masterLabel,detailLabel,mobileDetail,backHref}:{master:ReactNode;detail:ReactNode;masterLabel:string;detailLabel:string;mobileDetail:boolean;backHref:string}){
+ const [detailOpen,setDetailOpen]=useState(true);
+ const router=useRouter(),nav=useTranslations("nav"),common=useTranslations("common");
+ if(!detail)return <div>{master}</div>;
+ return <MasterDetail master={master} detail={detail} masterLabel={masterLabel} detailLabel={detailLabel} detailOpen={detailOpen} onDetailOpenChange={setDetailOpen} mobileDetail={mobileDetail} onBack={()=>router.push(backHref)} backLabel={common("back")} showDetailLabel={nav("showDetails")} hideDetailLabel={nav("hideDetails")}/>;
 }
 export function FocusedPage({children,className=""}:{children:ReactNode;className?:string}){
  return <div className={`ccp-focused-page ${className}`}>{children}</div>;

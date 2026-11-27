@@ -22,6 +22,10 @@ isolatedTeacherTest("authenticated responsive shell, page finder and screenshots
   await expect(page.locator("#global-workplace-switch")).toBeVisible();
   await page.screenshot({path:testInfo.outputPath(`shell-${name}.png`),animations:"disabled"});
  }
+ await page.locator(".ccp-mobile-nav").getByRole("link",{name:"Capture",exact:true}).click();
+ await expect(page).toHaveURL(/capture=1/);
+ await expect(page.locator("[data-capture-workspace]")).toBeVisible();
+ await page.screenshot({path:testInfo.outputPath("shell-mobile-capture.png"),animations:"disabled"});
  await page.setViewportSize({width:1440,height:900});
  const search=page.locator(".ccp-search-trigger");
  await search.focus();
