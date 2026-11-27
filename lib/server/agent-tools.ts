@@ -1306,7 +1306,7 @@ const catalogue = [
   },
   {
     name: "ccp_students_roster",
-    description: "Page through active learners by default or explicitly include archived learners. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Learning homework uses this roster for learner discovery only; materials and assignments of an identified learner stay teacher-owned. Current members use the workplace’s local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
+    description: "Page through active learners by default or explicitly include archived learners. Optional query matches names and aliases, as in the website directory. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Learning homework uses this roster for learner discovery only; materials and assignments of an identified learner stay teacher-owned. Current members use the workplace’s local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
     schema: z.object({query:z.string().trim().max(80).optional(),workplaceId:studentRosterWorkplaceFilter,
       includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
       offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
