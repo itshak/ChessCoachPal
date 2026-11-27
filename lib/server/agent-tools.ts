@@ -1384,7 +1384,7 @@ const catalogue = [
   },
   {
     name: "ccp_sessions_list",
-    description: "Find sessions and their revision/topic. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
+    description: "Find sessions, their revision/topic and sessionTimeZone for displaying starts_at without changing the stored instant. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
     schema: z.object({
       query: searchText.optional(), workplaceId: uuid.nullable().optional(),
     }).strict(), scope: "coach:read", readOnly: true,

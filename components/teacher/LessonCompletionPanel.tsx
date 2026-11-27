@@ -1,12 +1,13 @@
 "use client";
 
+import {formatLocalizedInstantDate} from "@/i18n/date-time";
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import {useLocale,useTranslations} from "next-intl";
 import type { DailyCombinedCommitInput } from "@/lib/server/daily-lesson-combined";
 
-type Session={id:string;title:string;status:string;starts_at:string};
+type Session={id:string;title:string;status:string;starts_at:string;sessionTimeZone:string};
 type Person={studentId:string;name:string};
 type Roster={sessionId:string;title:string;status:string;updatedAt:string;
  participants:Person[];studentIds:string[]};
@@ -261,7 +262,7 @@ export function LessonCompletionPanel({workplaceId=null,pinned}:{workplaceId?:st
       setNotice("");setError("");}}>
     {!sessions.length&&<option value="">{t("noSessions")}</option>}
     {sessions.map(s=><option value={s.id} key={s.id}>
-     {s.title} · {new Date(s.starts_at).toLocaleDateString(locale)} · {statusName(s.status)}
+     {s.title} · {formatLocalizedInstantDate(s.starts_at,locale,s.sessionTimeZone)} · {statusName(s.status)}
     </option>)}
    </select>
   </label>}
