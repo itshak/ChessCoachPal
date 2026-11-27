@@ -97,7 +97,7 @@ export default async function DashboardPage({ searchParams }: {
         </Link>
       </div>
 
-      <div className={"grid gap-6 min-w-0 items-start "+(preparation?"xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]":"")}>
+      <div className={"grid gap-6 min-w-0 items-start "+(preparation?"min-[800px]:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]":"")}>
       <section aria-labelledby="daily-coaching" className="mb-6 min-w-0">
         <h2 id="daily-coaching" className={home?"sr-only":"text-lg font-semibold mb-3"}>{t("dailyHeading")}</h2>
         {home&&<AdaptiveAgenda model={home} locale={locale} selectedId={typeof prepareTarget==="string"?prepareTarget:undefined}/>}
@@ -119,7 +119,7 @@ export default async function DashboardPage({ searchParams }: {
               <ul className="space-y-2">
                 {daily.sessions.map(session => (
                   <li key={session.id}>
-                    <Card padding="sm">
+                    <div className="border-b border-border py-3 min-w-0">
                       <p className="font-medium break-words"><bdi dir="auto">{session.title}</bdi></p>
                       <p className="text-sm text-muted">
                         <time dateTime={session.starts_at}>{dailyTime.format(new Date(session.starts_at))}</time>
@@ -128,7 +128,7 @@ export default async function DashboardPage({ searchParams }: {
                       <Link className="text-primary underline" href={upcomingHref(filters.data.upcomingAfter,session.id)}>
                         {t("dailyPrepareOpen",{title:session.title})}
                       </Link>
-                    </Card>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -142,27 +142,31 @@ export default async function DashboardPage({ searchParams }: {
           href={upcomingHref()}>{t("dailyUpcomingFirst")}</Link>}
       </section>
 
-      {preparation && <section aria-labelledby="lesson-preparation" className="mb-6 min-w-0 border-s border-border ps-4 [overflow-wrap:anywhere]">
+      {preparation && <section aria-labelledby="lesson-preparation" className="mb-6 min-w-0 border-s border-border ps-4 [overflow-wrap:anywhere] xl:sticky xl:top-4">
         <h2 id="lesson-preparation" className="text-lg font-semibold mb-3">{t("dailyPrepareHeading")}</h2>
         {preparation.kind !== "ready" ? <p role="alert">{t(preparation.kind === "invalid" ? "dailyPrepareInvalid"
           : preparation.kind === "not_found" ? "dailyPrepareNotFound" : "dailyPrepareUnavailable")}</p> : <>
-          {prepareSession!==undefined&&<h3><bdi dir="auto">{preparation.data.lesson.title}</bdi></h3>}
+          <h3 className="text-xl font-semibold leading-snug"><bdi dir="auto">{t("dailyPrepareOpen",{title:preparation.data.lesson.title})}</bdi></h3>
+          <p className="text-muted my-2"><bdi>{new Intl.DateTimeFormat(locale,{dateStyle:"full",timeStyle:"short",timeZone:preparation.data.lesson.timeZone}).format(new Date(preparation.data.lesson.startsAt))}</bdi>{" · "}{t("minutes",{count:preparation.data.lesson.durationMinutes})}</p>
+          <p className="text-muted mb-3"><bdi>{preparation.data.lesson.timeZone}</bdi></p>
           {!preparation.data.history ? <p>{t(preparation.data.status === "roster_not_recorded"
             ? "dailyPrepareUnknownRoster" : "dailyPrepareRosterLimit")}</p> :
-            <div className="space-y-2">
-              <p>{t("dailyPrepareParticipants",{count:preparation.data.participantCount})}</p>
+            <div className="space-y-3">
+              <p className="font-semibold">{t("dailyPrepareParticipants",{count:preparation.data.participantCount})}</p>
               <p>{t("dailyPrepareHistory",{from:preparation.data.history.from,to:preparation.data.history.to})}</p>
+              <h4 className="font-semibold border-t border-border pt-3">{words.materials}</h4>
               {preparation.data.history.material.status === "not_recorded" && <p>{t("dailyPrepareNoMaterials")}</p>}
               {preparation.data.history.material.status === "truncated" && <p>{t("dailyPrepareLimited")}</p>}
               {preparation.data.history.material.participantsWithoutEvidence !== null &&
                 <p>{t("dailyPrepareUnknownCount",{count:preparation.data.history.material.participantsWithoutEvidence})}</p>}
-              {!!preparation.data.history.material.entries.length && <ul>
-                {preparation.data.history.material.entries.map(item=><li key={item.sourceId}>
+              {!!preparation.data.history.material.entries.length && <ul className="divide-y divide-border">
+                {preparation.data.history.material.entries.map(item=><li className="py-2" key={item.sourceId}>
                   <bdi dir="auto">{item.title ?? t("dailyHomeworkUnknownMaterial")}</bdi>{" · "}
-                  {t(item.stage === "assigned" ? "dailyPrepareAssigned" : item.stage === "taught"
-                    ? "dailyPrepareTaught" : "dailyPrepareCompleted")}
+                  <span className="text-muted">{t(item.stage === "assigned" ? "dailyPrepareAssigned" : item.stage === "taught"
+                    ? "dailyPrepareTaught" : "dailyPrepareCompleted")}{" · "}<bdi>{item.date}</bdi></span>
                 </li>)}
               </ul>}
+              <h4 className="font-semibold border-t border-border pt-3">{words.evidence}</h4>
               <p>{t("dailyPrepareAssignments",{count:preparation.data.history.assignments.count})}</p>
               <p>{t("dailyPrepareObservations",{count:preparation.data.history.verifiedObservations.count})}</p>
               {preparation.data.trainingGoals && <p>{preparation.data.trainingGoals.status === "ready"
@@ -185,7 +189,7 @@ export default async function DashboardPage({ searchParams }: {
             <p>{t("dailyAttendanceEmpty")}</p>}
           {!!attendanceTasks.length && <ul className="space-y-2">
             {attendanceTasks.map(row => <li key={row.id}>
-              <Card padding="sm">
+              <div className="border-b border-border py-3 min-w-0">
                 <p className="font-medium break-words"><bdi dir="auto">{row.title}</bdi></p>
                 <p className="text-sm">
                   <time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
@@ -199,7 +203,7 @@ export default async function DashboardPage({ searchParams }: {
                   {t("dailyCloseOpen",{title:row.title})}
                 </Link>}
 
-              </Card>
+              </div>
             </li>)}
           </ul>}
           {daily.missingAttendance.truncated && <p className="mt-2">{t("dailyAttendanceTruncated")}</p>}
@@ -216,7 +220,7 @@ export default async function DashboardPage({ searchParams }: {
               ? "dailyHomeworkEmptyPage" : "dailyHomeworkEmpty")}</p>}
             {!!daily.homework.assignments.length && <ul className="space-y-2">
               {daily.homework.assignments.map(row => <li key={row.assignmentId}>
-                <Card padding="sm">
+                <div className="border-b border-border py-3 min-w-0">
                   <p className="font-medium break-words"><bdi dir="auto">{row.materialTitle ?? t("dailyHomeworkUnknownMaterial")}</bdi></p>
                   <p className="text-sm"><time dateTime={row.dueOn}>{row.dueOn}</time>{" · "}
                     {t(row.reason === "SUBMISSION_AWAITING_REVIEW" ? "dailyHomeworkReview"
@@ -226,7 +230,7 @@ export default async function DashboardPage({ searchParams }: {
                     href={"/learning?" + new URLSearchParams({dailyHomework:row.assignmentId,dueThrough:daily.date}) + "#daily-homework-focus"}>
                     {t("dailyHomeworkOpen", { material:row.materialTitle ?? t("dailyHomeworkUnknownMaterial"), date:row.dueOn })}
                   </Link>
-                </Card>
+                </div>
               </li>)}
             </ul>}
             {daily.homework.nextAfter && <Link className="text-primary underline"
@@ -245,11 +249,11 @@ export default async function DashboardPage({ searchParams }: {
             {!daily.ratingReview.issues.length && !daily.ratingReview.truncated && <p>{t("dailyRatingNone")}</p>}
             {!!daily.ratingReview.issues.length && <ul className="space-y-2">
               {daily.ratingReview.issues.map(row => <li key={row.provider+":"+row.reason}>
-                <Card padding="sm">
+                <div className="border-b border-border py-3 min-w-0">
                   <p className="font-medium"><bdi dir="ltr">{row.provider==="lichess" ? t("dailyRatingLichess") : t("dailyRatingChessCom")}</bdi></p>
                   <p>{t(row.reason==="PROVIDER_FAILURE" ? "dailyRatingFailure"
                     : row.reason==="PROVIDER_RETRY_RECORDED" ? "dailyRatingRetry" : "dailyRatingDiscarded",{count:row.count})}</p>
-                </Card>
+                </div>
               </li>)}
             </ul>}
             {daily.ratingReview.truncated && <p>{t("dailyRatingTruncated")}</p>}
@@ -267,7 +271,7 @@ export default async function DashboardPage({ searchParams }: {
             <p className="text-sm text-muted mb-2">{t("dailyFreshness.explanation")}</p>
             <ul className="space-y-2">
               {ratingFreshness.providers.map(row=><li key={row.provider}>
-                <Card padding="sm">
+                <div className="border-b border-border py-3 min-w-0">
                   <p className="font-medium"><bdi dir="ltr">{row.provider==="lichess"?t("dailyRatingLichess"):t("dailyRatingChessCom")}</bdi></p>
                   {row.status==="unavailable" ? <p>{t("dailyFreshness.unavailable")}</p> : <>
                     <p>{t("dailyFreshness.recent",{count:row.counts.recent})}</p>
@@ -276,7 +280,7 @@ export default async function DashboardPage({ searchParams }: {
                     {row.counts.unknown>0&&<p>{t("dailyFreshness.unknown",{count:row.counts.unknown})}</p>}
                     {row.partial&&<p>{t("dailyFreshness.partial")}</p>}
                   </>}
-                </Card>
+                </div>
               </li>)}
             </ul>
           </>}
@@ -291,7 +295,7 @@ export default async function DashboardPage({ searchParams }: {
             {!closeReview.sessions.length && !closeReview.truncated && <p>{t("dayEndEmpty")}</p>}
             {!!closeReview.sessions.length && <ul className="space-y-2">
               {closeReview.sessions.map(row => <li key={row.id}>
-                <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                <div className="border-b border-border py-3 min-w-0 [overflow-wrap:anywhere]">
                   <p className="font-medium"><bdi dir="auto">{row.title}</bdi></p>
                   <p className="text-sm"><time dateTime={row.starts_at}>{dailyTime.format(new Date(row.starts_at))}</time>
                     {" · "}{row.attendance === "missing" ? t("dailyAttendanceMissing", {count: row.missingCount ?? 0})
@@ -300,7 +304,7 @@ export default async function DashboardPage({ searchParams }: {
                   {row.completionHref ? <Link href={row.completionHref} className="text-primary underline">
                     {t("dailyCloseOpen", {title: row.title})}</Link> : row.scheduleHref ? <Link href={row.scheduleHref}
                     className="text-primary underline">{t("dailyAttendanceOpen", {title: row.title})}</Link> : null}
-                </Card>
+                </div>
               </li>)}
             </ul>}
             {closeReview.truncated && <p>{t("dayEndTruncated", {count: closeReview.limit})}</p>}
@@ -325,12 +329,12 @@ export default async function DashboardPage({ searchParams }: {
                 {!creditExpiry.packages.length && <p>{t("creditExpiryEmpty")}</p>}
                 {!!creditExpiry.packages.length && <ul className="space-y-2">
                   {creditExpiry.packages.map(row => <li key={row.packageId}>
-                    <Card padding="sm" className="min-w-0 [overflow-wrap:anywhere]">
+                    <div className="border-b border-border py-3 min-w-0 [overflow-wrap:anywhere]">
                       <p className="font-medium"><bdi dir="auto">{row.studentName}</bdi></p>
                       <p>{t("creditExpiryUnits",{count:row.unredeemedUnits,date:row.expiresOn})}</p>
                       <Link href={row.learnerHref} className="text-primary underline">
                         {t("creditExpiryLearner",{name:row.studentName})}</Link>
-                    </Card>
+                    </div>
                   </li>)}
                 </ul>}
                 {creditExpiry.truncated && <p>{t("creditExpiryTruncated",{count:creditExpiry.limit})}</p>}
