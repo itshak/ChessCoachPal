@@ -37,7 +37,7 @@ export async function StudentDirectory({
 
   const params = await searchParams;
   const showArchived = params.show === "archived";
-  const query = typeof params.q === "string" ? params.q.trim().slice(0, 200) : "";
+  const query = typeof params.q === "string" ? params.q.trim().slice(0, 80) : "";
   const common = await getTranslations("common");
   const filterHref = (archived: boolean) => {
     const q = new URLSearchParams();
@@ -108,7 +108,7 @@ export async function StudentDirectory({
         {showArchived && <input type="hidden" name="show" value="archived" />}
         <label className="min-w-0 flex-1 text-sm font-medium">
           {t("search")}
-          <input name="q" type="search" defaultValue={query} maxLength={200} dir="auto" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base" />
+          <input name="q" type="search" key={query} defaultValue={query} maxLength={80} dir="auto" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base" />
         </label>
         <button type="submit" className="min-h-11 rounded-lg border border-border px-4 font-semibold text-primary">{common("search")}</button>
         {query && <Link href={showArchived ? "/students?show=archived" : "/students"} className="min-h-11 content-center px-3 text-primary">{common("cancel")}</Link>}
@@ -148,6 +148,7 @@ export async function StudentDirectory({
                     key={student.id}
                     href={detailHref(student.id)}
                     aria-current={selectedId === student.id ? "page" : undefined}
+                    data-student-directory-id={student.id}
                     className="block min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
                   >
                     <Card
