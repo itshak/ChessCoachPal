@@ -1,5 +1,11 @@
 # Daily coaching implementation progress
 
+## Reconciled source scope (2026-11-27)
+
+The existing website and delegated MCP cover dated/workplace-scoped upcoming lessons and continuation ([#174](https://github.com/itshak/ChessCoachPal/pull/174), [#253](https://github.com/itshak/ChessCoachPal/pull/253)), exact preparation ([#180](https://github.com/itshak/ChessCoachPal/pull/180), [#252](https://github.com/itshak/ChessCoachPal/pull/252)), attendance and review ([#176](https://github.com/itshak/ChessCoachPal/pull/176), [#182](https://github.com/itshak/ChessCoachPal/pull/182), [#190](https://github.com/itshak/ChessCoachPal/pull/190)), due homework ([#178](https://github.com/itshak/ChessCoachPal/pull/178), [#184](https://github.com/itshak/ChessCoachPal/pull/184)), and bounded stored ratings status, not provider activation. Learner history and archive recovery ([#192](https://github.com/itshak/ChessCoachPal/pull/192), [#194](https://github.com/itshak/ChessCoachPal/pull/194)), completed group reporting ([#260](https://github.com/itshak/ChessCoachPal/pull/260)) and reviewed historical imports ([#262](https://github.com/itshak/ChessCoachPal/pull/262)) do not create inferred teaching or duplicate hours.
+
+The upcoming queue intentionally returns one session per row without resolving a learner-progress panel. The preparation reader gives bounded group evidence, not an exhaustive learner-by-learner history. Private notes are explicit to the teacher at completion, not part of the shared preparation response. Remaining presentation belongs to the separate redesign. Scripted delegated consent and synthetic Auth acceptance do not substitute for a complete native-client lesson loop. Keep those scopes open rather than declaring the change archived.
+
 ## Verified source: upcoming canonical lessons by date and workplace
 
 [PR #174](https://github.com/itshak/ChessCoachPal/pull/174) merged at
