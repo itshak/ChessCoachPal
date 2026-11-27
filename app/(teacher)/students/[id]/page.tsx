@@ -116,7 +116,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
     .map(a=>a.workplace_id));
   const creditWorkplaces=sharingWorkplaces.filter(w=>activePayers.has(w.id));
   const rosterParams=await searchParams;
-  const directoryParams={show: rosterParams.show ?? (student.archived_at ? "archived" : undefined), q: typeof rosterParams.q==="string" ? rosterParams.q.slice(0,200) : undefined};
+  const directoryParams={show: rosterParams.show ?? (student.archived_at ? "archived" : undefined), q: typeof rosterParams.q==="string" ? rosterParams.q.slice(0,80) : undefined};
   const backQuery=new URLSearchParams();
   if(directoryParams.show==="archived")backQuery.set("show","archived");
   if(directoryParams.q)backQuery.set("q",directoryParams.q);
@@ -131,7 +131,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
         <StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>
       </aside>
       <article className="min-w-0 text-[15px] leading-relaxed">
-      <Link href={backHref} className="inline-flex min-h-11 items-center gap-2 mb-3 text-muted hover:text-foreground lg:hidden"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
+      <Link href={backHref} className="inline-flex min-h-11 items-center gap-2 mb-3 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
       <header className="rounded-xl border border-border bg-surface p-4 sm:p-5 mb-5">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
