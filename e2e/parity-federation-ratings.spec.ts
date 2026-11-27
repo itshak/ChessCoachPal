@@ -287,6 +287,87 @@ test("PARITY:PARITY-federation-evidence retains old IDs and refuses to guess cor
  }
 });
 
+test("PARITY: unlinking a FIDE ID removes the coach export and retains evidence",async({page,request})=>{
+ const call=await delegatedTool(page,request);
+ const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{
+  auth:{persistSession:false,autoRefreshToken:false},
+ });
+ const teacher=await db.from("teachers").select("id").eq("email",SEED_TEACHER.email).single();
+ expect(teacher.error).toBeNull();
+ const created=await call("ccp_students_create",{name:"Unlink FIDE "+randomUUID(),idempotencyKey:randomUUID()});
+ expect(created.error).toBeUndefined();
+ const studentId=created.data.entityId as string;
+ const endpoint=`/api/students/${studentId}/federations`,cutoff="2025-02-01";
+ const id="900000000151";
+ const setId=async(fideId:string)=>{
+  const put=await page.request.put(`/api/students/${studentId}`,{headers:{origin},data:{fideId}});
+  expect(put.status(),await put.text()).toBe(200);
+ };
+ await setId(id);
+ const seeded=await db.from("student_rating_snapshots").insert({
+  teacher_id:teacher.data!.id,student_id:studentId,provider:"fide",time_control:"standard",
+  rating:1963,external_player_id:id,provider_list_version:"unlink-fixture",
+  effective_at:cutoff,observed_at:"2025-02-07T00:00:00Z",fetched_at:"2025-02-07T00:00:00Z",
+  source:"provider_api",verification_state:"provider_published",source_url:"https://example.invalid/fide",
+  source_digest:"9".repeat(64),request_id:randomUUID(),games:0,
+ });
+ expect(seeded.error).toBeNull();
+ const profile=async()=>db.from("students").select("strength,chess_ratings").eq("id",studentId).single();
+ const strengthBefore=await profile();
+ expect(strengthBefore.error).toBeNull();
+ const linked=await page.request.get(endpoint);
+ expect(linked.status(),await linked.text()).toBe(200);
+ const snapshots=(await linked.json()).snapshots;
+ expect(snapshots).toHaveLength(1);
+ const assertUnlinked=async()=>{
+  const response=await page.request.get(endpoint+"?fideOn="+cutoff);
+  expect(response.status(),await response.text()).toBe(200);
+  const report=await response.json();
+  const mcp=await call("ccp_student_federations_get",{studentId,fideOn:cutoff});
+  expect(mcp.error).toBeUndefined();
+  expect(mcp.data).toEqual(report);
+  expect(report.identity.fideId).toBeNull();
+  const notLinked=["standard","rapid","blitz"].map(timeControl=>({timeControl,status:"not_linked",snapshot:null}));
+  expect(report.currentEvidence.fide).toEqual(notLinked);
+  expect(report.fideEffectiveEvidence.fide).toEqual(notLinked);
+  expect(report.fideEvidenceExport).toBeUndefined();
+  expect(report.snapshots).toEqual(snapshots);
+  expect((await profile()).data).toEqual(strengthBefore.data);
+ };
+ await page.goto(`/students/${studentId}`);
+ const field=page.getByTestId("fide-id-input");
+ const panel=page.getByTestId("federation-rating-evidence");
+ await expect(field).toHaveValue(id);
+ const dateInput=page.getByLabel("FIDE effective date",{exact:true});
+ await dateInput.fill(cutoff);
+ await page.getByRole("button",{name:"Review effective date",exact:true}).click();
+ const download=page.getByRole("button",{name:"Download private evidence (JSON)",exact:true});
+ await expect(download).toBeVisible();
+ await field.fill("");
+ await page.getByRole("button",{name:"Save player identity"}).click();
+ await expect(download).toHaveCount(0);
+ await expect(panel).toBeVisible();
+ await expect(panel).not.toContainText("1963");
+ await expect(dateInput).toHaveCount(0);
+ await assertUnlinked();
+ await setId(id);
+ const saved=await page.request.get(`/api/students/${studentId}`);
+ expect(saved.status(),await saved.text()).toBe(200);
+ const revision=(await saved.json()).updated_at;
+ expect(typeof revision).toBe("string");
+ const cleared=await call("ccp_students_profile_edit",{
+  studentId,expectedUpdatedAt:revision,changes:{fideId:null},confirmed:true,
+ });
+ expect(cleared.error).toBeUndefined();
+ await assertUnlinked();
+ // A genuinely new signed page must show the saved state after the MCP edit.
+ const fresh=await page.context().newPage();
+ await fresh.goto(`/students/${studentId}`);
+ await expect(fresh.getByTestId("federation-rating-evidence")).toBeVisible();
+ await expect(fresh.getByTestId("fide-id-input")).toHaveValue("");
+ await expect(fresh.getByLabel("FIDE effective date",{exact:true})).toHaveCount(0);
+});
+
 test("PARITY: FIDE effective-date review is keyboard usable in English, Hebrew and Russian",async({page,request})=>{
  test.setTimeout(90_000);
  const call=await delegatedTool(page,request);

@@ -38,27 +38,29 @@ type Field="studentName"|"studentId"|"workplaceName"|"workplaceId"|"attendedOn"|
  "periodStart"|"periodEnd"|"attendanceStatus"|"lessonCount"|"mode"|"sourceLabel"|
  "sourceTimezone";
 const synonyms:Record<Field,string[]>={
- studentName:["student name","student","learner","pupil"],
- studentId:["student id","student uuid","learner id"],
- workplaceName:["workplace","workplace name","school","location","academy"],
- workplaceId:["workplace id","school id","workplace uuid"],
- attendedOn:["attendance date","lesson date","date","attended on"],
- periodStart:["period start","from date","start date","range start"],
- periodEnd:["period end","to date","end date","range end"],
- attendanceStatus:["attendance status","attendance","status","present absent"],
- lessonCount:["lesson count","lessons count","number of lessons","count","lessons"],
- mode:["record type","record mode","mode","kind"],
- sourceLabel:["source label","source note","source ref","reference"],
- sourceTimezone:["source timezone","timezone","time zone"],
+ studentName:["student name","student","learner","pupil","שם תלמיד","שם התלמיד","ученик","имя ученика"],
+ studentId:["student id","student uuid","learner id","מזהה תלמיד","идентификатор ученика"],
+ workplaceName:["workplace","workplace name","school","location","academy","מקום עבודה","בית ספר","место работы","школа"],
+ workplaceId:["workplace id","school id","workplace uuid","מזהה מקום עבודה","идентификатор школы"],
+ attendedOn:["attendance date","lesson date","date","attended on","תאריך שיעור","תאריך נוכחות","дата урока","дата занятия"],
+ periodStart:["period start","from date","start date","range start","תחילת תקופה","начало периода"],
+ periodEnd:["period end","to date","end date","range end","סוף תקופה","конец периода"],
+ attendanceStatus:["attendance status","attendance","status","present absent","נוכחות","סטטוס נוכחות","посещаемость","статус посещения"],
+ lessonCount:["lesson count","lessons count","number of lessons","count","lessons","מספר שיעורים","количество занятий"],
+ mode:["record type","record mode","mode","kind","סוג רשומה","тип записи"],
+ sourceLabel:["source label","source note","source ref","reference","תווית מקור","метка источника"],
+ sourceTimezone:["source timezone","timezone","time zone","אזור זמן מקור","часовой пояс источника"],
 };
 const normalized=(name:string)=>name.normalize("NFKC").trim().replace(/\s+/g," ").toLocaleLowerCase("en");
+function historicalHeaderCandidates(headers:string[]){
+ const labels=[...new Set(headers)].map(header=>[header,normalized(header)] as const);
+ return (Object.entries(synonyms) as [Field,string[]][]).map(([field,names])=>[
+  field,labels.filter(([,label])=>names.includes(label)).map(([header])=>header),
+ ] as const);
+}
 export function suggestHistoricalMapping(headers:string[]):HistoricalMapping{
- const chosen:HistoricalMapping={},used=new Set<string>();
- for(const [field,names] of Object.entries(synonyms)){
-  const found=headers.find(h=>!used.has(h)&&names.includes(normalized(h)));
-  if(found){chosen[field]=found;used.add(found);}
- }
- return chosen;
+ return Object.fromEntries(historicalHeaderCandidates(headers)
+  .flatMap(([field,matches])=>matches.length===1?[[field,matches[0]]]:[]));
 }
 const validDate=(raw:string)=>{
  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw))return false;
@@ -79,11 +81,19 @@ type PreparedRecord={
 type PreviewIssue={row:number;code:string;message:string;candidateIds?:string[]};
 const headerValue=(row:Record<string,string>,mapping:HistoricalMapping,field:Field)=>
  (row[mapping[field]??""]??"").trim();
-function strictStatus(value:string){
- const word=normalized(value);
- return word==="attended"?"present":word==="present"?"present":
-  word==="late"?"late":word==="absent"?"absent":word==="excused"?"excused":null;
-}
+const statusAliases=new Map<string,PreparedRecord["attendanceStatus"]>([
+ ["attended","present"],["present","present"],["נוכח","present"],["נוכחת","present"],
+ ["присутствовал","present"],["присутствовала","present"],
+ ["late","late"],["איחר","late"],["איחרה","late"],["опоздал","late"],["опоздала","late"],
+ ["absent","absent"],["נעדר","absent"],["נעדרה","absent"],
+ ["отсутствовал","absent"],["отсутствовала","absent"],
+ ["excused","excused"],["היעדרות מוצדקת","excused"],["уважительная причина","excused"],
+]);
+const strictStatus=(value:string)=>statusAliases.get(normalized(value))??null;
+const modeAliases=new Map([
+ ["dated","dated"],["מתוארך","dated"],["с датой","dated"],
+ ["aggregate","aggregate"],["מצטבר","aggregate"],["за период","aggregate"],
+]);
 async function paginate(db:SupabaseClient,table:"students"|"workplaces",
  teacherId:string,columns:string){
  const all:Record<string,unknown>[]=[];
@@ -119,10 +129,16 @@ async function historicalPrepare(db:SupabaseClient,teacherId:string,
  }
  if(rows.length<1||rows.length>MAX_HISTORICAL_ROWS)
   return historicalFail(413,"ROW_LIMIT","Maximum 2000 historical source rows");
- const mapping={...suggestHistoricalMapping(headers),...input.mapping};
+ const explicit=input.mapping??{};
+ for(const [field,candidates] of historicalHeaderCandidates(headers)){
+  if(candidates.length>1&&!Object.hasOwn(explicit,field))
+   return historicalFail(400,"INVALID_MAPPING",
+    `Multiple source headers match '${field}'. Provide the exact original header in mapping.${field} or explicitly omit that field.`);
+ }
+ const mapping={...suggestHistoricalMapping(headers),...explicit};
  const keys=new Set<string>();
  for(const [field,header] of Object.entries(mapping)){
-  if(!(field in synonyms))
+  if(!Object.hasOwn(synonyms,field))
    return historicalFail(400,"INVALID_MAPPING",
     `Unknown target '${field}'. Historical mapping uses camelCase studentName, studentId, workplaceName, workplaceId, attendedOn, attendanceStatus (not student_name). For plain dates use ccp_historical_attendance_dates_preview.`);
   if(header!==null&&(!headers.includes(header)||typeof header!=="string"))
@@ -199,7 +215,8 @@ async function historicalPrepare(db:SupabaseClient,teacherId:string,
   if(!status)issues.push({row:sourceRow,code:"UNKNOWN_ATTENDANCE",
     message:"Specify present, late, absent or excused explicitly"});
   const date=read("attendedOn"),pStart=read("periodStart"),pEnd=read("periodEnd");
-  const kind=normalized(read("mode"))|| (date?"dated":(pStart||pEnd)?"aggregate":"");
+  const mode=normalized(read("mode"));
+  const kind=(mode?(modeAliases.get(mode)??mode):"")|| (date?"dated":(pStart||pEnd)?"aggregate":"");
   if(!["dated","aggregate"].includes(kind)){
    issues.push({row:sourceRow,code:"MISSING_DATE_PRECISION",
     message:"Specify an exact ISO lesson date or an explicit aggregate period; dates are never invented"});

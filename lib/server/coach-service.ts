@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type {Database} from "@/lib/supabase/types";
 import {workplaceRosterDate} from "@/lib/server/workplace-student-scope";
 
 /**
@@ -124,6 +125,11 @@ export async function groupsMembers(db: Db, teacherId: string, groupId: string) 
   return data;
 }
 
+// The composite session-to-venue foreign key returns one related object.
+type SessionDiscoveryRow=Pick<Database["public"]["Tables"]["teaching_sessions"]["Row"],
+  "id"|"title"|"starts_at"|"duration_minutes"|"lesson_note"|"status"|
+  "workplace_id"|"group_id"|"student_id"|"local_timezone"> & {venue:{timezone:string}|null};
+
 export async function sessionsList(db: Db, teacherId: string, workplaceId?:string|null) {
   if(workplaceId){
     const owned=await db.from("workplaces").select("id").eq("teacher_id",teacherId).eq("id",workplaceId).maybeSingle();
@@ -131,14 +137,17 @@ export async function sessionsList(db: Db, teacherId: string, workplaceId?:strin
     if(!owned.data)throw notFound();
   }
   let query=db.from("teaching_sessions")
-    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id")
+    .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,"+
+     "local_timezone,venue:workplaces!teaching_sessions_workplace_id_teacher_id_fkey(timezone)")
     .eq("teacher_id", teacherId)
     .order("starts_at", { ascending: false })
     .order("id", { ascending: true }).limit(100);
   if(workplaceId)query=query.eq("workplace_id",workplaceId);
-  const {data,error}=await query;
+  const {data,error}=await query.overrideTypes<SessionDiscoveryRow[],{merge:false}>();
   if (error) throw problem();
-  const sessions=data??[];
+  const sessions=(data??[]).map(({local_timezone,venue,...session})=>({
+    ...session,sessionTimeZone:local_timezone||venue?.timezone||"UTC",
+  }));
   const studentIds=[...new Set(sessions.flatMap(session=>session.student_id?[session.student_id]:[]))];
   if(!studentIds.length)return sessions.map(session=>({...session,studentArchived:null}));
   // One minimal owner-scoped read for the currently listed direct students.

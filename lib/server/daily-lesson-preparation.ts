@@ -10,6 +10,39 @@ export class DailyPreparationError extends Error {
 
 const ROSTER_LIMIT=50;
 const MATERIAL_LIMIT=24;
+const ACTIVE_PLAN_LIMIT=100;
+const storedGoals=z.array(z.object({
+  status:z.enum(["planned","in_progress","achieved","abandoned"]),
+})).max(20);
+type GoalSummary={scope:"teacher_wide"}&(
+  {status:"ready";planned:number;inProgress:number}
+  | {status:"limited"|"unavailable";planned:null;inProgress:null}
+);
+
+/** Plans are learner-level, not workplace evidence. Never export their text or IDs. */
+async function currentTrainingGoals(db:SupabaseClient,teacherId:string,students:string[],now:Date):Promise<GoalSummary>{
+  const scope="teacher_wide";
+  const withheld=(status:"limited"|"unavailable"):GoalSummary=>({
+    scope,status,planned:null,inProgress:null,
+  });
+  try{
+    const {data,error}=await db.from("student_training_plans").select("goals")
+      .eq("teacher_id",teacherId).in("student_id",students).eq("status","active")
+      .lte("created_at",now.toISOString()).order("id").limit(ACTIVE_PLAN_LIMIT+1);
+    if(error||!data)return withheld("unavailable");
+    if(data.length>ACTIVE_PLAN_LIMIT)return withheld("limited");
+    let planned=0,inProgress=0;
+    for(const row of data){
+      const result=storedGoals.safeParse(row.goals);
+      if(!result.success)return withheld("unavailable");
+      for(const goal of result.data){
+        if(goal.status==="planned")planned++;
+        if(goal.status==="in_progress")inProgress++;
+      }
+    }
+    return {scope,status:"ready",planned,inProgress};
+  }catch{return withheld("unavailable");}
+}
 type Session={
   id:string; title:string; workplace_id:string; starts_at:string; duration_minutes:number;
   local_timezone:string|null; roster:{student_id:string}[];
@@ -42,7 +75,7 @@ export async function teacherDailyLessonPreparation(db:SupabaseClient,teacherId:
   const {id,title,starts_at,duration_minutes,workplace_id}=row;
   const lesson={id,title,startsAt:starts_at,durationMinutes:duration_minutes,workplaceId:workplace_id,timeZone};
   const unknown=(status:"roster_not_recorded"|"roster_limit_exceeded")=>({
-    lesson,status,participantCount:null,history:null,
+    lesson,status,participantCount:null,history:null,trainingGoals:null,
   });
   if(!row.roster.length)return unknown("roster_not_recorded");
   if(row.roster.length>ROSTER_LIMIT)return unknown("roster_limit_exceeded");
@@ -55,7 +88,7 @@ export async function teacherDailyLessonPreparation(db:SupabaseClient,teacherId:
   const from=addDays(to,-89);
   const observedFrom=zonedTimeToUtc(from,"00:00",timeZone).toISOString();
   const observedTo=new Date(Math.min(now.getTime(),zonedTimeToUtc(addDays(to,1),"00:00",timeZone).getTime())).toISOString();
-  const [m,a,o]=await Promise.all([
+  const [m,a,o,trainingGoals]=await Promise.all([
     db.from("material_teaching_evidence")
       .select("id,material_id,student_id,stage,occurred_on,material:learning_materials(title)")
       .eq("teacher_id",teacherId).eq("workplace_id",workplace_id).in("student_id",ids)
@@ -70,6 +103,7 @@ export async function teacherDailyLessonPreparation(db:SupabaseClient,teacherId:
     ).eq("teacher_id",teacherId).in("student_id",ids).eq("session.workplace_id",workplace_id)
       .not("verified_at","is",null).lte("verified_at",now.toISOString())
       .gte("observed_at",observedFrom).lt("observed_at",observedTo),
+    currentTrainingGoals(db,teacherId,ids,now),
   ]);
   if(m.error||!m.data||a.error||a.count===null||o.error||o.count===null)unavailable();
   const truncated=m.data.length>MATERIAL_LIMIT;
@@ -82,7 +116,7 @@ export async function teacherDailyLessonPreparation(db:SupabaseClient,teacherId:
       stage:r.stage,date:r.occurred_on,sourceId:r.id});
   }
   return {
-    lesson,status:"ready" as const,participantCount:ids.length,
+    lesson,status:"ready" as const,participantCount:ids.length,trainingGoals,
     history:{from,to,material:{status:truncated ? "truncated" as const : visible.length ? "recorded" as const : "not_recorded" as const,
       participantsWithEvidence,participantsWithoutEvidence:truncated ? null : ids.length-participantsWithEvidence,
       entries:[...materials.values()]},

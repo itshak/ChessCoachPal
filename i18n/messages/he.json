@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "תיעוד והשלמה של {title}",
+    "dailyUpcomingNext": "השיעורים הבאים בתאריך זה",
+    "dailyUpcomingFirst": "חזרה לשיעורים הראשונים",
     "dailyPrepareOpen": "הכנת {title}",
     "dailyPrepareHeading": "הכנת שיעור",
     "dailyPrepareInvalid": "יש לבחור שיעור תקין.",
@@ -49,6 +51,9 @@
     "dailyPrepareCompleted": "תועדה השלמה",
     "dailyPrepareAssignments": "מטלות שתועדו אצל המורה בתקופה זו: {count}",
     "dailyPrepareObservations": "תצפיות מאומתות שתועדו במקום העבודה בתקופה זו: {count}",
+    "dailyPrepareGoals": "יעדים נוכחיים בתוכניות פעילות של המאמן: {planned} בתכנון, {inProgress} בביצוע.",
+    "dailyPrepareGoalsLimited": "יש יותר מדי תוכניות פעילות מכדי לספור את היעדים שלהן כאן.",
+    "dailyPrepareGoalsUnavailable": "היעדים הנוכחיים באימון אינם זמינים.",
     "dailyPrepareNoMastery": "התיעוד אינו מעיד על שליטה בחומר.",
     "dailyFreshness": {
       "heading": "עדכניות דירוגים מקוונים",
@@ -3128,6 +3133,11 @@
     "hebrewName": "עברית",
     "russianName": "רוסית",
     "loading": "טוען…"
+  },
+  "studentIdentityIssue": {
+    "ambiguous": "יותר מתלמיד אחד מתאים לשם הזה. יש לבחור לפי מזהה התלמיד שמופיע בתוצאות.",
+    "duplicate": "השמות האלה מתייחסים לאותו תלמיד. יש לכלול אותו פעם אחת בלבד.",
+    "notFound": "לא נמצא תלמיד פעיל עם השם או הכינוי המדויק הזה."
   },
   "portalSharing": {
     "renew": "חידוש הרשאה",

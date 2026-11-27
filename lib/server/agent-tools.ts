@@ -310,7 +310,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, read bounded upcoming lessons, frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
+    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, read bounded upcoming lessons (continue with daily.nextUpcomingAfter as upcomingAfter for the same date and workplace), frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
@@ -441,7 +441,7 @@ const catalogue = [
   },
   {
     name:"ccp_historical_attendance_preview",
-    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB.",
+    description:"ADVANCED mapped historical import for aggregate/absence/mixed rows or private staged files, NOT the preferred source-neutral date-list importer. Mapping format is targetField -> exact source column header, with camelCase targets: {studentName:'Student Name',workplaceId:'Workplace ID',attendedOn:'Lesson Date',attendanceStatus:'Status'}. Do not use snake_case roster-import suggestions or map a date-matrix heading directly. For plain student plus real attended dates use ccp_historical_attendance_dates_preview instead. Ambiguous, missing or duplicate records block import. Large files use short-lived private stageId; direct rows up to 250 / 256 KiB. English, Hebrew and Russian labels are recognized; competing source headers require an explicit exact mapping.",
     schema:historicalInputSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -728,7 +728,7 @@ const catalogue = [
   },
   {
     name:"ccp_student_federations_get",
-    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. fideEvidenceExport is the same minimal, private date-review artifact as the website download; it omits learner and player identifiers and does not publish anything. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
+    description:"Read optional federation IDs and independent rating history for one owned learner. Current FIDE evidence is the latest unambiguous stored edition for the exact linked ID. Optional fideOn (YYYY-MM-DD through today UTC) adds a separate effective-date result for the currently linked ID from editions now stored; it does not claim what was known or linked on that date. With a linked ID, fideEvidenceExport is the same minimal, private date-review artifact as the website download; it omits learner and player identifiers and does not publish anything. Prior IDs remain in history. Israeli data is manual-only; teacher entries are unverified. No live lookup or change to strength.",
     schema:federationSummaryInput,scope:"coach:read",readOnly:true,
   },
   {
@@ -1101,7 +1101,7 @@ const catalogue = [
   },
   {
     name:"ccp_portal_grants_renew_preview",
-    description:"Read-only review of a later expiry for one active owned portal grant. Scope is unchanged. Renewal invalidates any old link and requires separately approved secure browser issuance.",
+    description:"Read-only review of a later expiry for one active owned portal grant. Preserve the returned exact expiresAt instant for confirmation; if explaining it to the teacher, use the teacher timezone as the website does. Scope is unchanged. Renewal invalidates any old link and requires separately approved secure browser issuance.",
     schema:portalGrantRenewPreviewSchema.extend({grantId:uuid}).strict(),scope:"coach:read",readOnly:true,
   },
   {
@@ -1349,7 +1349,7 @@ const catalogue = [
   },
   {
     name: "ccp_students_profile_edit",
-    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
+    description: "Edit one student's chess handles, aliases, strength (1-10), teacher-entered ratings, lesson rates, private notes and birthdate. Set changes.fideId to a validated ID or null to unlink; unlinking keeps immutable observations. Archiving/reactivation requires the separate reviewed ccp_students_lifecycle_preview and ccp_students_lifecycle_commit; this general profile tool cannot change lifecycle state. Reload after conflicts; never blindly retry.",
     schema:z.object({studentId:uuid,expectedUpdatedAt:instant,changes:studentUpdateSchema,
       confirmed:z.literal(true)}).strict().refine(v=>Object.keys(v.changes).length>0,"Changes required"),
     scope:"coach:write",readOnly:false,
@@ -1384,7 +1384,7 @@ const catalogue = [
   },
   {
     name: "ccp_sessions_list",
-    description: "Find sessions and their revision/topic. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
+    description: "Find sessions, their revision/topic and sessionTimeZone for displaying starts_at without changing the stored instant. An explicit owned workplace filters discovery before the limit; null or omitted workplaceId leaves All. Exact session IDs and frozen rosters are unaffected. Omit query for recent sessions; ambiguity returns NEEDS_RESOLUTION.",
     schema: z.object({
       query: searchText.optional(), workplaceId: uuid.nullable().optional(),
     }).strict(), scope: "coach:read", readOnly: true,
@@ -1673,7 +1673,7 @@ const catalogue = [
   },
   {
     name:"ccp_students_resolve",
-    description:"Resolve up to 100 exact teacher-owned active student full names and Hebrew/English aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Read-only.",
+    description:"Resolve up to 100 exact teacher-owned active student full names and registered Unicode aliases to stable IDs. Return ambiguity candidates or missing-name issues without guessing, fuzzy search, archived students or private contacts. Optional outputLocale (en/he/ru) adds human-facing displayMessage without changing canonical codes, diagnostics or IDs. Read-only.",
     schema:studentNamesResolveSchema,scope:"coach:read",readOnly:true,
   },
   {
@@ -1886,7 +1886,7 @@ const catalogue = [
   },
   {
     name:"ccp_lesson_preparation_get",
-    description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, and teacher-wide assignment counts. Shows unavailable, unrecorded and truncated evidence separately. No participant notes, inferred proficiency, or writes.",
+    description:"Read one upcoming exact canonical lesson from the active workplace or All. Uses only its frozen roster for bounded recorded material coverage, verified observations at that venue, teacher-wide assignment counts, and current planned/in-progress goal counts on active teacher-wide plans. Goals are not venue evidence. Shows unavailable, unrecorded and truncated evidence separately. No goal text, participant notes, inferred proficiency, or writes.",
     schema:dailyLessonPreparationInput,scope:"coach:read",readOnly:true,
   },
   {
@@ -1956,7 +1956,7 @@ const catalogue = [
   },
   {
     name:"ccp_coach_briefing_get",
-    description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
+    description:"Prepare a fact-based teacher-owned student briefing: recent lesson history, explicitly attested material, assigned homework, coach reviews and approved chess observations within the requested teacher-local dates. Each item has stored source IDs, with unknowns marked. No AI-inferred mastery.",
     schema:coachBriefingSchema,scope:"coach:read",readOnly:true,
   },
 ] as const;
@@ -2822,8 +2822,14 @@ export async function runTool(db: SupabaseClient, teacherId: string,
         return {data:await teacherStudentPatch(db,teacherId,a.studentId,a.changes,a.expectedUpdatedAt)};
       }
       case "ccp_dashboard_summary": {
-        const { workplaceId, date, homeworkAfter, closeReview, ratingFreshness } = args as z.infer<typeof teacherDashboardSummaryInput>;
-        return { data: await teacherDashboardSummary(db, teacherId, workplaceId, date, homeworkAfter, closeReview, ratingFreshness) };
+        const { workplaceId, date, homeworkAfter, closeReview, ratingFreshness, upcomingAfter } = args as z.infer<typeof teacherDashboardSummaryInput>;
+        try{
+          return {data:await teacherDashboardSummary(db,teacherId,workplaceId,date,homeworkAfter,closeReview,ratingFreshness,upcomingAfter)};
+        }catch(error){
+          if(error instanceof TeacherOverviewError && error.status===400)
+            return {error:{code:"VALIDATION_ERROR",message:error.message}};
+          throw error;
+        }
       }
       case "ccp_professional_credit_expiry_get":
         return {data:await teacherProfessionalCreditExpiry(db,teacherId,args as z.infer<typeof professionalCreditExpiryInput>)};
@@ -2972,9 +2978,10 @@ export async function runTool(db: SupabaseClient, teacherId: string,
       case "ccp_schedule_day_preview":
         return {data:await teacherScheduleDayPreview(db,teacherId,
           args as Parameters<typeof teacherScheduleDayPreview>[2])};
-      case "ccp_students_resolve":
-        return {data:await teacherStudentNamesResolve(db,teacherId,
-          (args as {names:string[]}).names)};
+      case "ccp_students_resolve": {
+        const input=args as z.infer<typeof studentNamesResolveSchema>;
+        return {data:await teacherStudentNamesResolve(db,teacherId,input.names,{outputLocale:input.outputLocale})};
+      }
       case "ccp_lessons_capture_commit_with_chapter":
         return {data:await teacherAtomicLessonChapterCommit(db,teacherId,
           args as Parameters<typeof teacherAtomicLessonChapterCommit>[2])};

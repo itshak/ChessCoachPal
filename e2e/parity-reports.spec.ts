@@ -1,3 +1,4 @@
+import {readFile} from "node:fs/promises";
 import {randomUUID} from "node:crypto";
 import {expect,test} from "@playwright/test";
 import {delegatedTool} from "./helpers/delegated-mcp";
@@ -68,6 +69,13 @@ test("PARITY:PARITY-reports-workplace-summary uses same timezone-local calculati
 test("requested en/he/ru human presentation matches MCP JSON and safe exports byte-for-byte",async({page,request})=>{
  const callTool=await delegatedTool(page,request),day="2042-03-10";
  const {workplaceId}=await fixture(callTool,page,day);
+ await page.goto("/coaching");
+ const panel=page.getByRole("region",{name:"Teaching activity report"});
+ const workplace=panel.getByLabel("Report workplace");
+ await expect(workplace.locator(`option[value="${workplaceId}"]`)).toHaveCount(1);
+ await workplace.selectOption(workplaceId);
+ await panel.getByLabel("From date").fill(day);
+ await panel.getByLabel("To date").fill(day);
  let canonicalReport:unknown;
  for(const outputLocale of ["en","he","ru"] as const){
    const params=new URLSearchParams({workplaceId,from:day,to:day,outputLocale});
@@ -101,6 +109,19 @@ test("requested en/he/ru human presentation matches MCP JSON and safe exports by
    expect(txt.data.export).toBe(reportText(site.report,outputLocale));
    expect(csv.data.export).toMatch(/^\uFEFF/);
    expect(csv.data.export).not.toContain("Report pupil");
+   await panel.getByLabel("Report language").selectOption(outputLocale);
+   await panel.getByRole("button",{name:"Generate report",exact:true}).click();
+   await expect(panel.locator('[aria-live="polite"]')).toHaveAttribute("dir",site.presentation.direction);
+   for(const [label,extension,value] of [
+     ["Export CSV","csv",csv.data.export],["Export text","txt",txt.data.export],
+   ] as const){
+     const offered=page.waitForEvent("download");
+     await panel.getByRole("button",{name:label,exact:true}).click();
+     const download=await offered;
+     expect(download.suggestedFilename()).toBe("chesscoachpal-report."+extension);
+     const bytes=await readFile(await download.path());
+     expect(bytes.equals(Buffer.from(value,"utf8")),outputLocale+" "+extension+" exact download").toBe(true);
+   }
  }
  const badWeb=await page.request.get("/api/coaching/report?"+new URLSearchParams({
    workplaceId,from:day,to:day,outputLocale:"zz"

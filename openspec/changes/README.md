@@ -2,6 +2,8 @@
 
 **Updated 2026-11-25.** The [consolidated schema](archive/2026-11-21-consolidate-final-preproduction-saas-schema/SOURCE_ACCEPTANCE.md) is frozen on [merged main](https://github.com/itshak/ChessCoachPal/commit/0147c7aa34f680b6defa9f202f28c64e9fc6b5ba). [ADR-0019](../../docs/adr/0019-single-final-schema-and-commercial-entitlements.md) and the schema lock govern changes. The older 2026-11-19 freeze proposal was superseded, not separately completed. The current exact source lock is the [ADR-0030 successor](../../docs/adr/0030-daily-completion-and-taught-material-source-review.md), approved in [#188](https://github.com/itshak/ChessCoachPal/pull/188) and active in source on [#189](https://github.com/itshak/ChessCoachPal/pull/189).
 
+**November 27 evidence and open decisions:** see [the current source status](../../docs/OPENSPEC_SOURCE_REMAINING.md). The source freeze was advanced by [ADR-0037](../../docs/adr/0037-online-rating-budget-cadence-source-review.md); the dated lock references below describe the earlier checkpoint.
+
 ## Current evidence
 
 - [PR #115](https://github.com/itshak/ChessCoachPal/pull/115) merged the source and active lock after all five exact-head workflows and an independent two-boot structural comparison. The frozen baseline has **105 public relations**, 60 directly typed and 45 classified as SQL-only. PR #113 remains historical; its regression was ported, not merged.

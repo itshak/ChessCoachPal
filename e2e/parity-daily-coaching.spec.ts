@@ -61,8 +61,9 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     const other=await lesson("other school",date+"T12:00:00Z",{workplace_id:b,group_id:otherGroup});
     const foreignId=await lesson("foreign",date+"T12:30:00Z",{teacher_id:foreign.id,workplace_id:x,group_id:foreignGroup});
     const tool=await delegatedTool(page,request,"coach:read coach:write",{email:owner.email,password});
-    expect((await tool.listTools()).find(t=>t.name==="ccp_dashboard_summary")?.inputSchema?.properties)
-      .toHaveProperty("date");
+    const properties=(await tool.listTools()).find(t=>t.name==="ccp_dashboard_summary")?.inputSchema?.properties;
+    expect(properties).toHaveProperty("date");
+    expect(properties).toHaveProperty("upcomingAfter");
     expect((await tool("ccp_workplace_context_set",{
       selectedWorkplaceId:a,expectedSelectedWorkplaceId:null,confirmed:true,
     })).error).toBeUndefined();
@@ -158,14 +159,48 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     const cap=await admin.from("teaching_sessions").insert(Array.from({length:25},(_,i)=>({
       teacher_id,workplace_id:a,group_id:group,title:prefix+"limit "+i,local_timezone:zone,
       duration_minutes:20,status:"scheduled",
-      starts_at:new Date(Date.parse(capDate+"T08:00:00Z")+i*30*60_000).toISOString(),
+      starts_at:new Date(Date.parse(capDate+"T08:00:00Z")+i*30*60_000).toISOString()
+        .replace(".000Z",i===23?".123456Z":".000Z"),
     }))).select("id,starts_at");
     expect(cap.error).toBeNull();
     const capped=await read("?date="+capDate,{date:capDate});
     expect(capped.daily).toMatchObject({date:capDate,limit:24,truncated:true});
-    expect(ids(capped)).toEqual(cap.data!.sort((l,r)=>l.starts_at.localeCompare(r.starts_at)).slice(0,24).map(r=>r.id));
+    const ordered=cap.data!.sort((l,r)=>l.starts_at.localeCompare(r.starts_at)||l.id.localeCompare(r.id)).map(r=>r.id);
+    expect(ids(capped)).toEqual(ordered.slice(0,24));
+    const upcomingAfter=capped.daily.nextUpcomingAfter as string;
+    expect(upcomingAfter).toContain(".123456");
+    const after=encodeURIComponent(upcomingAfter);
+    const next=await read("?date="+capDate+"&upcomingAfter="+after,{date:capDate,upcomingAfter});
+    expect(next.daily).toMatchObject({date:capDate,limit:24,truncated:false,nextUpcomingAfter:null});
+    expect([...ids(capped),...ids(next)]).toEqual(ordered);
+    expect(Date.parse(next.daily.sessions[0].starts_at)).toBeGreaterThan(Date.parse(capped.daily.sessions[23].starts_at));
+
+    const invalidNext=async(query:string,args:Record<string,unknown>)=>{
+      const response=await page.request.get(api+query);
+      expect(response.status()).toBe(400);
+      expect(await response.json()).toMatchObject({code:"VALIDATION_ERROR"});
+      expect((await tool("ccp_dashboard_summary",args)).error?.code).toBe("VALIDATION_ERROR");
+    };
+    await invalidNext("?date="+capDate+"&workplaceId=all&upcomingAfter="+after,
+      {date:capDate,workplaceId:null,upcomingAfter});
+    await invalidNext("?date="+tomorrow+"&upcomingAfter="+after,{date:tomorrow,upcomingAfter});
+    await invalidNext("?upcomingAfter="+after,{upcomingAfter});
+    const wrongZone=upcomingAfter.replace("America/New_York","UTC");
+    await invalidNext("?date="+capDate+"&upcomingAfter="+encodeURIComponent(wrongZone),
+      {date:capDate,upcomingAfter:wrongZone});
+    expect((await page.request.get(api+"?date="+capDate+"&upcomingAfter="+after+"&upcomingAfter="+after)).status()).toBe(400);
+
     await page.goto("/dashboard?date="+capDate);
     await expect(queue.getByText("Showing the first 24 lessons.",{exact:false})).toBeVisible();
+    await queue.getByRole("link",{name:"Next lessons for this date"}).click();
+    await expect(queue.getByRole("listitem")).toHaveCount(1);
+    await expect(queue.getByRole("listitem").first()).toContainText(next.daily.sessions[0].title);
+    await expect(queue.getByRole("link",{name:"Next lessons for this date"})).toHaveCount(0);
+    await queue.getByRole("link",{name:"Back to the first lessons"}).click();
+    await expect(queue.getByRole("listitem")).toHaveCount(24);
+    const afterRead=await admin.from("teaching_sessions").select("id").in("id",ordered);
+    expect(afterRead.error).toBeNull();
+    expect(afterRead.data?.map(r=>r.id).sort()).toEqual([...ordered].sort());
   }finally{
     for(const id of identities) expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
   }

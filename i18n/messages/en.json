@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "Record and complete {title}",
+    "dailyUpcomingNext": "Next lessons for this date",
+    "dailyUpcomingFirst": "Back to the first lessons",
     "dailyPrepareOpen": "Prepare {title}",
     "dailyPrepareHeading": "Lesson preparation",
     "dailyPrepareInvalid": "Choose a valid lesson.",
@@ -49,6 +51,9 @@
     "dailyPrepareCompleted": "Completion recorded",
     "dailyPrepareAssignments": "Teacher-wide assignments recorded in this window: {count}",
     "dailyPrepareObservations": "Verified observations recorded at this workplace in this window: {count}",
+    "dailyPrepareGoals": "Current teacher-wide goals on active plans: {planned} planned, {inProgress} in progress.",
+    "dailyPrepareGoalsLimited": "There are too many active plans to count their goals here.",
+    "dailyPrepareGoalsUnavailable": "Current training goals are unavailable.",
     "dailyPrepareNoMastery": "These records do not establish mastery.",
     "dailyFreshness": {
       "heading": "Current online rating freshness",
@@ -3128,6 +3133,11 @@
     "hebrewName": "Hebrew",
     "russianName": "Russian",
     "loading": "Loading…"
+  },
+  "studentIdentityIssue": {
+    "ambiguous": "More than one learner matches. Choose the learner using the returned ID.",
+    "duplicate": "These names refer to the same learner. Include that learner only once.",
+    "notFound": "No active learner matches this exact name or alias."
   },
   "portalSharing": {
     "renew": "Renew grant",

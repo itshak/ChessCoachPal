@@ -100,11 +100,32 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
       observation:"Private observation text",source:verified?"teacher":"agent",observed_at:day(-2)+"T10:00:00Z",
       ...(verified?{verified_at:day(-2)+"T11:00:00Z",verified_by:teacher_id}:{}),
     });
+    const goal=(status:"planned"|"in_progress"|"achieved"|"abandoned")=>({
+      id:randomUUID(),title:"Private goal title",status,targetDate:null,
+      coachEvidence:status==="achieved"?"Private verified goal evidence":null,
+    });
+    const plan=async(studentId:string,status:"active"|"paused"|"completed",
+      goals:ReturnType<typeof goal>[])=>{
+      const result=await tool("ccp_training_plans_commit",{
+        studentId,title:"Private plan title",summary:"Private plan summary",status,goals,
+        requestId:randomUUID(),confirmed:true,
+      });
+      expect(result.error).toBeUndefined();
+    };
+    await plan(learners[0],"active",[goal("planned"),goal("in_progress"),goal("achieved")]);
+    await plan(learners[1],"active",[goal("planned"),goal("abandoned")]);
+    await plan(learners[2],"paused",[goal("planned")]);
+    await plan(learners[2],"completed",[goal("achieved")]);
+    const unrostered=await row("students",{teacher_id,name:"Private nonparticipant"});
+    for(const [ownerId,studentId] of [[teacher_id,unrostered],[foreign.id,outsider]]){
+      await row("student_training_plans",{teacher_id:ownerId,student_id:studentId,
+        title:"Private unrelated active plan",status:"active",goals:[goal("planned")]});
+    }
     expect((await tool("ccp_workplace_context_set",{
       selectedWorkplaceId:school,expectedSelectedWorkplaceId:null,confirmed:true,
     })).error).toBeUndefined();
     const snapshot=async()=>Promise.all(["teaching_sessions","session_participants","material_teaching_evidence",
-      "training_assignments","chess_observations"].map(async table=>{
+      "training_assignments","chess_observations","student_training_plans"].map(async table=>{
       const r=await admin.from(table).select("*").eq("teacher_id",teacher_id);
       expect(r.error).toBeNull();
       return r.data!.map(x=>JSON.stringify(x)).sort();
@@ -121,9 +142,11 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
       return website;
     };
     const solo=await read(individual), prepared=await read(classLesson);
-    expect(solo).toMatchObject({status:"ready",participantCount:1,history:{material:{participantsWithoutEvidence:0}}});
+    expect(solo).toMatchObject({status:"ready",participantCount:1,history:{material:{participantsWithoutEvidence:0}},
+      trainingGoals:{scope:"teacher_wide",status:"ready",planned:1,inProgress:1}});
     expect(prepared).toMatchObject({status:"ready",participantCount:3,
       lesson:{id:classLesson,workplaceId:school,durationMinutes:40},
+      trainingGoals:{scope:"teacher_wide",status:"ready",planned:2,inProgress:1},
       history:{material:{status:"recorded",participantsWithEvidence:2,participantsWithoutEvidence:1},
         assignments:{status:"recorded",scope:"teacher_wide",count:1},verifiedObservations:{count:1}},
     });
@@ -131,7 +154,7 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
     expect(prepared.history.material.entries[0]).toMatchObject({materialId:material,title:"Shared rook ending evidence",stage:"taught"});
     for(const privateValue of [...learners,"Private","Other workplace","sourceUrl","mastery"])
       expect(JSON.stringify(prepared)).not.toContain(privateValue);
-    expect(await read(unknown)).toMatchObject({status:"roster_not_recorded",participantCount:null,history:null});
+    expect(await read(unknown)).toMatchObject({status:"roster_not_recorded",participantCount:null,history:null,trainingGoals:null});
     for(const denied of [another,otherTenant,cancelled,past,randomUUID()]){
       expect((await page.request.get(route+denied)).status()).toBe(404);
       expect((await tool("ccp_lesson_preparation_get",{sessionId:denied})).error?.code).toBe("NOT_FOUND");
@@ -147,6 +170,7 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
     const panel=page.getByRole("region",{name:"Lesson preparation"});
     await expect(panel.getByText("Participants with no recorded material evidence in this window: 1")).toBeVisible();
     await expect(panel.getByText("Shared rook ending evidence")).toHaveCount(1);
+    await expect(panel.getByText("Current teacher-wide goals on active plans: 2 planned, 1 in progress.")).toBeVisible();
     await expect(panel.getByText("These records do not establish mastery.")).toBeVisible();
     await expect(queue.getByRole("link",{name:"Prepare Group preparation"})).toBeVisible();
     await expect(queue.getByLabel("Coaching date")).toHaveValue(date);
@@ -156,7 +180,27 @@ test("PARITY:PARITY-daily-lesson-preparation uses exact frozen roster and record
     await expect(panel.getByRole("alert")).toContainText("Choose a valid lesson");
     await expect(queue.getByRole("link",{name:"Prepare Group preparation"})).toBeVisible();
     expect(await snapshot()).toEqual(before);
+    const damaged=await row("student_training_plans",{teacher_id,student_id:learners[0],
+      title:"Synthetic invalid goal record",status:"active",goals:[{status:"unknown"}]});
+    const unavailable=await read(individual);
+    expect(unavailable.status).toBe("ready");
+    expect(unavailable.trainingGoals).toEqual({scope:"teacher_wide",status:"unavailable",planned:null,inProgress:null});
+    expect((await admin.from("student_training_plans").delete().eq("id",damaged)).error).toBeNull();
+    expect((await admin.from("student_training_plans").insert(Array.from({length:100},(_,index)=>({
+      teacher_id,student_id:learners[0],title:"Synthetic bounded plan "+index,status:"active",goals:[],
+    })))).error).toBeNull();
+    const bounded=await read(individual);
+    expect(bounded.status).toBe("ready");
+    expect(bounded.trainingGoals).toEqual({scope:"teacher_wide",status:"limited",planned:null,inProgress:null});
   }finally{
-    for(const id of identities) expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+    for(const id of identities){
+      // Canonical plan receipts and revisions use RESTRICT, as do the plans'
+      // learner references. Remove only these disposable tenants' fixtures.
+      for(const table of ["student_training_plan_receipts","student_training_plan_revisions","student_training_plans"]){
+        const cleanup=await admin.from(table).delete().eq("teacher_id",id);
+        expect(cleanup.error,table+" fixture cleanup").toBeNull();
+      }
+      expect((await admin.auth.admin.deleteUser(id)).error).toBeNull();
+    }
   }
 });

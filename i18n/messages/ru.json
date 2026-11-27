@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "Записать и завершить урок «{title}»",
+    "dailyUpcomingNext": "Следующие уроки на эту дату",
+    "dailyUpcomingFirst": "К первым урокам",
     "dailyPrepareOpen": "Подготовить {title}",
     "dailyPrepareHeading": "Подготовка к уроку",
     "dailyPrepareInvalid": "Выберите допустимый урок.",
@@ -49,6 +51,9 @@
     "dailyPrepareCompleted": "Завершение записано",
     "dailyPrepareAssignments": "Заданий преподавателя за этот период: {count}",
     "dailyPrepareObservations": "Проверенных наблюдений в этом месте за этот период: {count}",
+    "dailyPrepareGoals": "Текущие цели по всем активным планам тренера: {planned} запланировано, {inProgress} в работе.",
+    "dailyPrepareGoalsLimited": "Активных планов слишком много, чтобы подсчитать их цели здесь.",
+    "dailyPrepareGoalsUnavailable": "Текущие цели тренировок недоступны.",
     "dailyPrepareNoMastery": "Эти записи не подтверждают освоение материала.",
     "dailyFreshness": {
       "heading": "Актуальность онлайн-рейтингов",
@@ -3128,6 +3133,11 @@
     "hebrewName": "Иврит",
     "russianName": "Русский",
     "loading": "Загрузка…"
+  },
+  "studentIdentityIssue": {
+    "ambiguous": "Найдено несколько учеников. Выберите нужного по идентификатору из списка.",
+    "duplicate": "Эти имена относятся к одному ученику. Укажите его только один раз.",
+    "notFound": "Нет активных учеников с таким точным именем или псевдонимом."
   },
   "portalSharing": {
     "renew": "Продлить доступ",

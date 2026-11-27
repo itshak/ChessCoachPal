@@ -1,5 +1,11 @@
 # Daily coaching implementation progress
 
+## Reconciled source scope (2026-11-27)
+
+The existing website and delegated MCP cover dated/workplace-scoped upcoming lessons and continuation ([#174](https://github.com/itshak/ChessCoachPal/pull/174), [#253](https://github.com/itshak/ChessCoachPal/pull/253)), exact preparation ([#180](https://github.com/itshak/ChessCoachPal/pull/180), [#252](https://github.com/itshak/ChessCoachPal/pull/252)), attendance and review ([#176](https://github.com/itshak/ChessCoachPal/pull/176), [#182](https://github.com/itshak/ChessCoachPal/pull/182), [#190](https://github.com/itshak/ChessCoachPal/pull/190)), due homework ([#178](https://github.com/itshak/ChessCoachPal/pull/178), [#184](https://github.com/itshak/ChessCoachPal/pull/184)), and bounded stored ratings status, not provider activation. Learner history and archive recovery ([#192](https://github.com/itshak/ChessCoachPal/pull/192), [#194](https://github.com/itshak/ChessCoachPal/pull/194)), completed group reporting ([#260](https://github.com/itshak/ChessCoachPal/pull/260)) and reviewed historical imports ([#262](https://github.com/itshak/ChessCoachPal/pull/262)) do not create inferred teaching or duplicate hours.
+
+The upcoming queue intentionally returns one session per row without resolving a learner-progress panel. The preparation reader gives bounded group evidence, not an exhaustive learner-by-learner history. Private notes are explicit to the teacher at completion, not part of the shared preparation response. Remaining presentation belongs to the separate redesign. Scripted delegated consent and synthetic Auth acceptance do not substitute for a complete native-client lesson loop. Keep those scopes open rather than declaring the change archived.
+
 ## Verified source: upcoming canonical lessons by date and workplace
 
 [PR #174](https://github.com/itshak/ChessCoachPal/pull/174) merged at
@@ -259,3 +265,27 @@ is only available in All workplaces. Website and delegated MCP share the
 owner-scoped read, return only per-provider counts, and distinguish a bounded
 or unavailable result from no saved evidence. It never claims complete cohort
 totals, reconstructs historical status, contacts a provider or writes a rating.
+
+
+### Current training goals in exact lesson preparation
+
+The same dashboard preparation view, signed HTTP read and delegated MCP
+return only planned and in-progress counts from active plans for the exact
+frozen learners, in one owner-scoped query. Training plans are teacher-wide
+learner records, not evidence for the current workplace or historical
+review window. Paused/completed plans and achieved/abandoned goals are
+excluded. No goal text, target dates, IDs, or learner identities are
+returned. Unknown roster, unavailable data, and a count withheld above the
+100-plan bound remain distinct from zero. No write or mastery inference.
+
+
+### Continue a full day of upcoming lessons
+
+A date page can continue after its last lesson, in database order by exact
+start instant and lesson ID. Several lessons at the same instant are not
+skipped or repeated at the boundary. The cursor binds to the same civil
+date, resolved owned workplace or All, and queue timezone. Invalid or stale
+scope is not used to read another workplace, and the website offers a return
+to the first page. The list deliberately reads the current schedule as it
+changes; a lesson that has since started or been cancelled is not frozen
+into an earlier page. No recurrence, attendance or write is triggered.
