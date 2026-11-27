@@ -5,6 +5,14 @@
     "hint": "Choose the language used in the app."
   },
   "nav": {
+    "home": "Home",
+    "capture": "Capture",
+    "searchPages": "Find pages",
+    "searchNoResults": "No matching pages",
+    "closeSearch": "Close",
+    "navigation": "Workspace navigation",
+    "mobileNavigation": "Mobile navigation",
+    "skipToContent": "Skip to content",
     "today": "Today",
     "students": "Students",
     "lessons": "Lessons",

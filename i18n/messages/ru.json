@@ -5,6 +5,14 @@
     "hint": "Выберите язык интерфейса приложения."
   },
   "nav": {
+    "home": "Главная",
+    "capture": "Запись",
+    "searchPages": "Найти страницы",
+    "searchNoResults": "Страницы не найдены",
+    "closeSearch": "Закрыть",
+    "navigation": "Навигация",
+    "mobileNavigation": "Мобильная навигация",
+    "skipToContent": "Перейти к содержанию",
     "today": "Сегодня",
     "students": "Ученики",
     "lessons": "Уроки",

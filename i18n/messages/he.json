@@ -5,6 +5,14 @@
     "hint": "בחרו את השפה שבה יוצג היישום."
   },
   "nav": {
+    "home": "בית",
+    "capture": "תיעוד",
+    "searchPages": "חיפוש עמודים",
+    "searchNoResults": "לא נמצאו עמודים",
+    "closeSearch": "סגירה",
+    "navigation": "ניווט במרחב העבודה",
+    "mobileNavigation": "ניווט בנייד",
+    "skipToContent": "דילוג לתוכן",
     "today": "היום",
     "students": "תלמידים",
     "lessons": "שיעורים",
