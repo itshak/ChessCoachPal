@@ -46,6 +46,28 @@ and after. The revised scenario passed twice against a disposable stack
 on top of the accepted group-note suite; complete Storage state was
 unchanged.
 
+## Combined contact, calendar, and RSVP regression
+
+[PR #255](https://github.com/itshak/ChessCoachPal/pull/255) strengthened the
+existing signed three-contact, two-workplace fixture. A valid school
+calendar and RSVP grant does not render or accept an RSVP for an uninvited
+event with the same learner and workplace. Its denial has neutral wording,
+`no-store`, and `no-referrer`. Exact invitation rows and coach-only RSVP
+notifications remain unchanged, the school-only calendar still works, and
+a separately invited event records one response and one internal
+notification. The mother and sponsor retain only their own approved
+calendar or prepaid purchase scope. Unlinking or archiving a contact is
+not evidence of contact merge.
+
+Four focused cases passed independently with unchanged disposable Storage.
+The exact tree passed [signed E2E](https://github.com/itshak/ChessCoachPal/actions/runs/45925930526)
+(469 cases plus three repeats), [CI](https://github.com/itshak/ChessCoachPal/actions/runs/45925930601)
+(624 unit tests), [security](https://github.com/itshak/ChessCoachPal/actions/runs/45925930637),
+[Compose](https://github.com/itshak/ChessCoachPal/actions/runs/45925930642), and
+[restore](https://github.com/itshak/ChessCoachPal/actions/runs/45925930619)
+before merge on [`006e285`](https://github.com/itshak/ChessCoachPal/commit/006e285f16ee4f6170dc250b7627e4a985f463f0).
+No live guest link, email, or ingress was exercised.
+
 ## Remains open
 
 - The process-local failed-token limiter and verified no-store/no-referrer application responses are not proof of distributed ingress limits or production access-log redaction. Review actual proxy trust and token redaction without inspecting real secrets here. Durable access audit/last-used needs a separate privacy, retention, authorization and governed persistence review; issued or renewed is not evidence of use.
