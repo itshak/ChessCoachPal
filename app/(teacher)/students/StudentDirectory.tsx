@@ -45,6 +45,9 @@ export async function StudentDirectory({
     if (query) q.set("q", query);
     return "/students" + (q.size ? "?" + q.toString() : "");
   };
+  const clearHref=showArchived ? "/students?show=archived" : "/students";
+  const layoutClass=selectedId ? "min-w-0" : "grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6";
+  const listClass=selectedId ? "min-w-0" : "min-w-0 lg:col-span-2";
   const detailHref = (id: string) => filterHref(showArchived).replace("/students", `/students/${id}`);
   // The roster opts into selected workplace context; global identity
   // choosers keep their existing unscoped list.
@@ -111,7 +114,7 @@ export async function StudentDirectory({
           <input name="q" type="search" key={query} defaultValue={query} maxLength={80} dir="auto" className="mt-1 block min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base" />
         </label>
         <button type="submit" className="min-h-11 rounded-lg border border-border px-4 font-semibold text-primary">{common("search")}</button>
-        {query && <Link href={showArchived ? "/students?show=archived" : "/students"} className="min-h-11 content-center px-3 text-primary">{common("cancel")}</Link>}
+        {query && <Link href={clearHref} className="min-h-11 content-center px-3 text-primary">{common("cancel")}</Link>}
       </form>
 
       {!entitlements && <p role="status" className="mb-4 text-sm">{t("capacityUnavailable")}</p>}
@@ -122,8 +125,8 @@ export async function StudentDirectory({
       )}
       {rosterError && <p role="alert" className="mb-4 text-sm text-error">{rosterError}</p>}
 
-      <div className={selectedId ? "min-w-0" : "grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6"}>
-        <div className={selectedId ? "min-w-0" : "min-w-0 lg:col-span-2"}>
+      <div className={layoutClass}>
+        <div className={listClass}>
           {rosterError ? null : !students.length ? (
             <Card className="text-center text-muted py-12">
               <div className="text-4xl mb-3">👋</div>
@@ -143,17 +146,19 @@ export async function StudentDirectory({
                     : null;
                 const subtitle=age!==null?t("age",{age}):null;
 
+                const current=selectedId === student.id ? "page" as const : undefined;
+                const rowClass=current ? "min-w-0 border-primary bg-primary/10" : "min-w-0 hover:border-primary/40 transition-colors cursor-pointer";
                 return (
                   <Link
                     key={student.id}
                     href={detailHref(student.id)}
-                    aria-current={selectedId === student.id ? "page" : undefined}
+                    aria-current={current}
                     data-student-directory-id={student.id}
                     className="block min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
                   >
                     <Card
                       padding="sm"
-                      className={selectedId === student.id ? "min-w-0 border-primary bg-primary/10" : "min-w-0 hover:border-primary/40 transition-colors cursor-pointer"}
+                      className={rowClass}
                     >
                       <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-1">
                         <div className="min-w-0 flex-1">
