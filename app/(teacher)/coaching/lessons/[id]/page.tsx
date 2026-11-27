@@ -88,7 +88,7 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
   <section className="rounded-xl border border-border bg-surface p-4 sm:p-5 space-y-2">
    <h2 className="text-lg font-semibold">{t("sharedNote")}</h2>
    <p className="whitespace-pre-wrap break-words" dir="auto">{lesson.lesson_note||common("unknown")}</p>
-   <Link href={scheduleHref} className="inline-flex min-h-11 items-center text-primary underline">{c("saveNotes")}</Link>
+   <Link href={scheduleHref} className="inline-flex min-h-11 items-center text-primary underline">{common("edit")}{" · "}{c("notes")}</Link>
   </section>
  </article>;
 }
