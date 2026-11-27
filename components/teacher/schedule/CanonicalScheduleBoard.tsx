@@ -45,10 +45,10 @@ async function jsonResponse(res:Response){
  * participant, and all writes use the exact website/MCP domain operations.
  */
 export function CanonicalScheduleBoard({
- weekStart,rangeEnd,anchorDate,view,calendarStatus,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
+ weekStart,rangeEnd,anchorDate,view,calendarStatus,nowIso,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,workplaceNames,sessions,events,students,workplaces,durationOptions,
 }:{
- weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;calendarStatus:"ready"|"partial"|"unavailable";today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
- workplaceTimezones:Readonly<Record<string,string>>;
+ weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;calendarStatus:"ready"|"partial"|"unavailable";nowIso:string;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
+ workplaceTimezones:Readonly<Record<string,string>>;workplaceNames:Readonly<Record<string,string>>;
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
 }){
@@ -64,6 +64,7 @@ export function CanonicalScheduleBoard({
  const ownsDetailEntry=useRef(false);
  const readSequence=useRef(0);
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
+ const [detailMissing,setDetailMissing]=useState(false);
  const [tab,setTab]=useState<DetailTab>("overview");
  const [moveDate,setMoveDate]=useState(today);
  const [moveTime,setMoveTime]=useState("16:00");
@@ -102,7 +103,7 @@ export function CanonicalScheduleBoard({
  },[openId]);
  function restoreList(){
   readSequence.current+=1;
-  setOpen(null);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+  setOpen(null);setDetailMissing(false);setBusy(false);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
   const previous=origin.current;origin.current=null;
   if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
  }
@@ -132,9 +133,9 @@ export function CanonicalScheduleBoard({
    setNotes([]);setPrivateBody("");setBody("");setRegister([]);
    if(id){
     const session=sessions.find(row=>row.id===id);
-    setOpen(session??null);setTab("overview");setBusy(false);
+    setOpen(session??null);setDetailMissing(!session);setTab("overview");setBusy(false);
    }else if(previousId){
-    setOpen(null);setBusy(false);
+    setOpen(null);setDetailMissing(false);setBusy(false);
     const previous=origin.current;origin.current=null;
     if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
    }
@@ -154,7 +155,7 @@ export function CanonicalScheduleBoard({
    else{window.history.pushState(null,"",hash);ownsDetailEntry.current=true;}
    lastDetailId.current=session.id;
   }
-  setOpen(session);setTab(section);
+  setOpen(session);setDetailMissing(false);setTab(section);
  }
  function selectSession(session:CanonicalCalendarRow){
   rememberOrigin();readSequence.current+=1;
@@ -418,6 +419,7 @@ export function CanonicalScheduleBoard({
    <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground text-sm"
     disabled={busy} onClick={addPrivateSession}>{t("createSession")}</button>
   </div>}
+  {detailMissing&&<p role="alert">{t("lessonLinkUnavailable")}</p>}
   {calendarStatus!=="ready"&&<p role="alert">{calendarStatus==="partial"?words.partial:words.unavailable}</p>}
   <div className="ccp-calendar-workspace">
   <div className="ccp-calendar-list" data-view={view}>
@@ -464,7 +466,7 @@ export function CanonicalScheduleBoard({
    </div>
    <div className="flex flex-wrap gap-3 border-b border-border">
     <button disabled={busy} aria-pressed={tab==="overview"} className={"pb-2 "+(tab==="overview"?"border-b-2 border-primary text-primary":"text-muted")}
-      onClick={()=>selectSession(open)}>{words.overview}</button>
+      onClick={()=>selectSession(sessions.find(row=>row.id===open.id)??open)}>{words.overview}</button>
     {(["attendance","notes","schedule"] as const).map(x=><button key={x} disabled={busy} aria-pressed={tab===x}
       className={"pb-2 "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
       onClick={()=>openSession(open,x)}>{t(x)}</button>)}
@@ -484,7 +486,7 @@ export function CanonicalScheduleBoard({
      <p>{t("minutes",{count:open.duration_minutes})}</p>
     </div>
     <div>
-     <p className="font-medium"><bdi dir="auto">{workplaces.find(w=>w.id===open.workplace_id)?.name??words.workplaceUnavailable}</bdi></p>
+     <p className="font-medium"><bdi dir="auto">{workplaceNames[open.workplace_id]??words.workplaceUnavailable}</bdi></p>
      <p className="text-muted"><bdi>{open.local_timezone||workplaceTimezones[open.workplace_id]||timezone}</bdi></p>
      {open.is_home_visit&&<p>{t("homeVisit")}</p>}
     </div>
@@ -493,12 +495,12 @@ export function CanonicalScheduleBoard({
      <ul className="divide-y divide-border">
       {open.participants.map(p=><li key={p.studentId} className="flex flex-wrap gap-2 justify-between py-3">
        <Link className="font-medium text-primary hover:underline" href={"/students/"+p.studentId}><bdi dir="auto">{p.name}</bdi></Link>
-       <span className="text-muted">{p.attendanceStatus===null?t("unmarked"):
+       <span className="text-muted">{p.attendanceStatus===null||p.attendanceStatus==="unmarked"?t("unmarked"):
         Object.prototype.hasOwnProperty.call(DECISIONS,p.attendanceStatus)?t(p.attendanceStatus as Decision):words.unknownStatus}</span>
       </li>)}
      </ul>
     </section>
-    {open.status==="scheduled"&&<Link className="text-primary underline" href={"/dashboard?prepareSession="+open.id+"#lesson-preparation"}>{words.prepare}</Link>}
+    {open.status==="scheduled"&&Date.parse(open.starts_at)>=Date.parse(nowIso)&&<Link className="text-primary underline" href={"/dashboard?prepareSession="+open.id+"#lesson-preparation"}>{words.prepare}</Link>}
    </div>:tab==="attendance"?<div className="space-y-3">
     <label className="block text-sm">{t("decision")}
      <select className={field} value={draftStatus??""}
