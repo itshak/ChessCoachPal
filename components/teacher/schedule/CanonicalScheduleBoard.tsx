@@ -63,6 +63,7 @@ export function CanonicalScheduleBoard({
  const lastDetailId=useRef<string|null>(null);
  const ownsDetailEntry=useRef(false);
  const readSequence=useRef(0);
+ const writePending=useRef(false);
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
  const [detailMissing,setDetailMissing]=useState(false);
  const [tab,setTab]=useState<DetailTab>("overview");
@@ -103,7 +104,7 @@ export function CanonicalScheduleBoard({
  },[openId]);
  function restoreList(){
   readSequence.current+=1;
-  setOpen(null);setDetailMissing(false);setBusy(false);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+  setOpen(null);setDetailMissing(false);if(!writePending.current)setBusy(false);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
   const previous=origin.current;origin.current=null;
   if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
  }
@@ -111,12 +112,10 @@ export function CanonicalScheduleBoard({
   const hasDetail=calendarDetailId(window.location.hash);
   if(hasDetail){
    const wasPushed=ownsDetailEntry.current;
+   if(wasPushed){window.history.back();return;}
    ownsDetailEntry.current=false;lastDetailId.current=null;
-   if(wasPushed)window.history.back();
-   else{
-    const url=new URL(window.location.href);url.hash="";
-    window.history.replaceState(null,"",url);
-   }
+   const url=new URL(window.location.href);url.hash="";
+   window.history.replaceState(null,"",url);
   }
   restoreList();
  }
@@ -128,14 +127,14 @@ export function CanonicalScheduleBoard({
    const id=calendarDetailId(window.location.hash);
    if(id===lastDetailId.current)return;
    const previousId=lastDetailId.current;
-   lastDetailId.current=id;ownsDetailEntry.current=false;
+   lastDetailId.current=id;ownsDetailEntry.current=Boolean(id&&window.history.state?.ccpCalendarDetail===true);
    readSequence.current+=1;
    setNotes([]);setPrivateBody("");setBody("");setRegister([]);
    if(id){
     const session=sessions.find(row=>row.id===id);
-    setOpen(session??null);setDetailMissing(!session);setTab("overview");setBusy(false);
+    setOpen(session??null);setDetailMissing(!session);setTab("overview");if(!writePending.current)setBusy(false);
    }else if(previousId){
-    setOpen(null);setDetailMissing(false);setBusy(false);
+    setOpen(null);setDetailMissing(false);if(!writePending.current)setBusy(false);
     const previous=origin.current;origin.current=null;
     if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
    }
@@ -149,10 +148,11 @@ export function CanonicalScheduleBoard({
   if(!open)origin.current={scroll:window.scrollY,focus:document.activeElement instanceof HTMLElement?document.activeElement:null};
  }
  function showDetail(session:CanonicalCalendarRow,section:DetailTab){
-  if(window.matchMedia("(max-width:799px)").matches&&calendarDetailId(window.location.hash)!==session.id){
+  const currentDetail=calendarDetailId(window.location.hash);
+  if((currentDetail||window.matchMedia("(max-width:799px)").matches)&&currentDetail!==session.id){
    const hash=calendarDetailHash(session.id);
-   if(calendarDetailId(window.location.hash))window.history.replaceState(null,"",hash);
-   else{window.history.pushState(null,"",hash);ownsDetailEntry.current=true;}
+   if(currentDetail)window.history.replaceState({ccpCalendarDetail:ownsDetailEntry.current},"",hash);
+   else{window.history.pushState({ccpCalendarDetail:true},"",hash);ownsDetailEntry.current=true;}
    lastDetailId.current=session.id;
   }
   setOpen(session);setDetailMissing(false);setTab(section);
@@ -230,7 +230,8 @@ export function CanonicalScheduleBoard({
   if(draftStatus==="student_cancelled"&&!noticeAt){
    showToast(t("studentNoticeRequired"),"error");return;
   }
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    const result=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{
@@ -246,16 +247,16 @@ export function CanonicalScheduleBoard({
     }));
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
-   setRegister(fresh);
-   loadDecision(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setRegister(fresh);loadDecision(selectedStudent,fresh);}
    showToast(result.emailQueued?t("attendanceSavedEmailQueued"):"Attendance saved");
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function saveNotes(){
   if(!open||!selectedStudent)return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    const result=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/notes",{
@@ -271,11 +272,11 @@ export function CanonicalScheduleBoard({
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/notes?includePrivate=true&confirmed=true",
     {cache:"no-store"}));
-   setNotes(fresh);loadNote(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setNotes(fresh);loadNote(selectedStudent,fresh);}
    showToast(result.emailQueued?t("notesSavedEmailQueued"):t("notesSaved"));
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
 
  async function saveSchedule(){
@@ -284,7 +285,8 @@ export function CanonicalScheduleBoard({
   try{
    startsAt=zonedTimeToUtc(moveDate,moveTime,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,"reject").toISOString();
   }catch{showToast(t("invalidLocalTime"),"error");return;}
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
     method:"PATCH",headers:{"Content-Type":"application/json"},
@@ -292,29 +294,31 @@ export function CanonicalScheduleBoard({
       isHomeVisit:moveHomeVisit,
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   closeDetail();showToast(t("rescheduled"));router.refresh();
+   if(selectionSequence===readSequence.current)closeDetail();showToast(t("rescheduled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function cancelTeachingSession(){
   if(!open)return;
   if(!window.confirm(t("cancelSessionConfirm")))return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
     method:"PATCH",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({status:"cancelled",
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   closeDetail();showToast(t("sessionCancelled"));router.refresh();
+   if(selectionSequence===readSequence.current)closeDetail();showToast(t("sessionCancelled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function bulkAttendance(){
   if(!open||!register.length)return;
   if(bulkDecision==="teacher_cancelled"&&notifyFamily&&
     !window.confirm(t("confirmFamilyCancellation")))return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/attendance",{
     method:"POST",headers:{"Content-Type":"application/json"},
@@ -331,14 +335,14 @@ export function CanonicalScheduleBoard({
    }));
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
-   setRegister(fresh);loadDecision(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setRegister(fresh);loadDecision(selectedStudent,fresh);}
    showToast(t("allAttendanceUpdated"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function addPrivateSession(){
   if(!addStudent)return showToast(t("chooseStudent"),"error");
-  setBusy(true);
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/calendar/private-sessions",{
     method:"POST",headers:{"Content-Type":"application/json"},
@@ -351,7 +355,7 @@ export function CanonicalScheduleBoard({
    setAddOpen(false);showToast(t("privateSessionScheduled"));
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  return <div className="space-y-5 ccp-calendar" data-detail-open={!!open} data-view={view}>
   <div className="ccp-calendar-controls flex flex-wrap gap-3 items-center justify-between">
