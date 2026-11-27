@@ -281,9 +281,11 @@ test("PARITY:PARITY-history-ambiguous-source rejects unknown dates, aliases and 
  const student=await teacherStudent(page,name);
  const second=await teacherStudent(page,unique("Another historic child"));
  const alias=unique("Ambiguous alias");
+ const hebrew=unique("תלמיד היסטורי");
+ const english=unique("Historical English alias");
  for(const id of [student,second]){
   const updated=await page.request.put("/api/students/"+id,{
-   data:{nameAliases:[alias]},
+   data:{nameAliases:id===student?[alias,hebrew,english]:[alias]},
   });
   expect(updated.status(),await updated.text()).toBe(200);
  }
@@ -319,6 +321,32 @@ test("PARITY:PARITY-history-ambiguous-source rejects unknown dates, aliases and 
  expect(dupe.status()).toBe(200);
  expect((await dupe.json()).issues.some((i:{code:string})=>
   i.code==="DUPLICATE_EVIDENCE")).toBe(true);
+ // The same historical observation under two exact aliases is a duplicate,
+ // not an ambiguous name and not permission to create another learner.
+ const acrossAliases={...range,rows:[hebrew,english].map(label=>({
+  "Student Name":label,Workplace:workplace,Date:"2025-11-11",Attendance:"present",
+ }))};
+ const beforeProfile=await profile(page,student);
+ const before=await call("ccp_historical_attendance_report",{studentId:student,workplaceId});
+ expect(before.error).toBeUndefined();
+ expect(before.data.totalRows).toBe(0);
+ const imported=await page.request.post("/api/import/historical/preview",{data:acrossAliases});
+ expect(imported.status(),await imported.text()).toBe(200);
+ const prepared=await imported.json();
+ expect(prepared).toMatchObject({canCommit:false,sourceRows:2,previewTotal:1,issueCount:1,
+  previewRows:[{studentId:student,workplaceId,attendedOn:"2025-11-11",attendanceStatus:"present"}],
+  issues:[{row:3,code:"DUPLICATE_EVIDENCE"}],
+ });
+ const delegated=await call("ccp_historical_attendance_preview",acrossAliases);
+ expect(delegated.error).toBeUndefined();
+ expect(delegated.data).toEqual(prepared);
+ const denied={...acrossAliases,previewDigest:prepared.previewDigest,
+  idempotencyKey:randomUUID(),confirmed:true};
+ expect((await page.request.post("/api/import/historical/commit",{data:denied})).status()).toBe(409);
+ expect((await call("ccp_historical_attendance_commit",denied)).error?.code).toBe("REVIEW_REQUIRED");
+ expect((await call("ccp_historical_attendance_report",{studentId:student,workplaceId})).data)
+  .toEqual(before.data);
+ expect(await profile(page,student)).toEqual(beforeProfile);
  const handoff=await call("ccp_historical_import_upload_handoff",{});
  expect(handoff.error).toBeUndefined();
  expect((handoff.data as {uploadUrl:string}).uploadUrl).toContain("/account");
