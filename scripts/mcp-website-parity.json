@@ -1152,7 +1152,7 @@
       "existingTools": [
         "ccp_historical_attendance_preview"
       ],
-      "explanation": "Website and delegated MCP share owner-scoped historical evidence preview with exact school year, timezone, matching student names/aliases, workplace resolution, ambiguous match blocker, dated versus aggregate-only classification and stable preview digest, evidenced in e2e/parity-historical-import.spec.ts.",
+      "explanation": "Website and delegated MCP share owner-scoped historical evidence preview with exact school year, timezone, matching student names/aliases, workplace resolution, ambiguous match blocker, dated versus aggregate-only classification and stable preview digest, evidenced in e2e/parity-historical-import.spec.ts. Exact English, Hebrew and Russian headers and values use one parser; competing headers require an explicit original-column selection. Signed locale evidence: e2e/parity-historical-import-locale.spec.ts.",
       "evidenceTest": "e2e/parity-historical-import.spec.ts"
     },
     {
