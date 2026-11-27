@@ -1,0 +1,26 @@
+{
+  "name": "chesscoachpal-design-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "react-aria-components": "1.21.1",
+    "@ariakit/react": "0.4.37",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "@ark-ui/react": "5.37.0",
+    "radix-ui": "1.4.3",
+    "cmdk": "1.1.1",
+    "@headlessui/react": "2.2.10"
+  },
+  "devDependencies": {
+    "vite": "7.3.1",
+    "@playwright/test": "1.55.0"
+  }
+}

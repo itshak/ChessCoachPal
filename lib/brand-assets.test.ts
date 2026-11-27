@@ -11,27 +11,48 @@ const css = asset("../app/globals.css").toString("utf8");
 describe("approved ChessCoachPal identity", () => {
   it("uses exactly the approved source SVG for the app and public icon", () => {
     expect(nextSvg).toBe(primarySvg);
-    expect(primarySvg).toContain("the knight, pupil, and open book");
-    expect(primarySvg).toContain("horseClip");
+    expect(primarySvg).toBe(asset("../public/icon/chesscoachpal-compact-dark.svg").toString("utf8"));
+    expect(primarySvg).toContain('viewBox="155 125 940 940"');
     expect(primarySvg).not.toContain("rook and conversation");
   });
 
   it("has a distinct foreground inset for PWA mask-safe rendering", () => {
     expect(maskableSvg).toContain("ChessCoachPal maskable icon");
     expect(maskableSvg).toContain("translate(188 188) scale(0.7)");
-    expect(maskableSvg).toContain("horseClip");
+    expect(maskableSvg).toBe(asset("../public/icon/chesscoachpal-compact-maskable.svg").toString("utf8"));
   });
 
   it("keeps the website and the logo in one approved brand palette", () => {
-    for (const hue of ["#0B1322", "#0D1829", "#23B7AB", "#E6B447"]) {
+    for (const hue of ["#1C1D23", "#F1F2F8", "#CDB58D"]) {
       expect(primarySvg).toContain(hue);
       expect(css).toContain(hue);
     }
-    expect(css).toContain("--color-background: #0B1322");
-    expect(css).toContain('--color-surface: #0D1829');
+    expect(css).toContain("--color-background: #1C1D23");
+    expect(css).toContain('--color-surface: #272932');
     expect(css).toContain('[data-teacher-theme="light"]');
-    expect(PWA.backgroundColor).toBe("#0B1322");
-    expect(PWA.themeColor).toBe("#0D1829");
+    expect(PWA.backgroundColor).toBe("#1C1D23");
+    expect(PWA.themeColor).toBe("#272932");
+  });
+
+  it("preserves approved knight, pawn foot and book contours across all theme variants", () => {
+    const reference = asset("../experiments/design-lab/src/logo-source.svg").toString("utf8");
+    const prototype = asset("../experiments/design-lab/src/brand.jsx").toString("utf8");
+    const knight = reference.match(/<clipPath id="horseClip"><path d="([^"]+)"/)?.[1];
+    expect(knight).toBeTruthy();
+    for (const variant of ["mentor", "compact"]) {
+      for (const theme of ["dark", "light"]) {
+        const svg = asset(`../public/icon/chesscoachpal-${variant}-${theme}.svg`).toString("utf8");
+        expect(svg.match(/data-part="knight" d="([^"]+)"/)?.[1]).toBe(knight);
+        for (const part of ["pawn-foot", "book"]) {
+          const contour = svg.match(new RegExp('data-part="' + part + '" d="([^"]+)"'))?.[1];
+          expect(contour).toBeTruthy();
+          expect(prototype).toContain(contour);
+        }
+        const piece = theme === "dark" ? "#F1F2F8" : "#1C1D23";
+        expect(svg).toContain(`data-part="pawn" fill="${piece}"`);
+        expect(svg).toContain(`transform="translate(0 15)" fill="${piece}"`);
+      }
+    }
   });
 
   it("ships valid generated raster icons in the required display sizes", () => {

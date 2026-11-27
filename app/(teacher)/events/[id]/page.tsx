@@ -38,7 +38,7 @@ export default async function EventDetailPage({
   const rsvps=event.rsvps;
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-3xl">
       <Link
         href="/events"
         className="text-sm text-muted hover:text-foreground transition-colors"

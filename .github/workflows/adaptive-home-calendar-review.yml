@@ -1,0 +1,115 @@
+name: Adaptive Home and Calendar review
+
+# Supplemental, feature-owned evidence; never replaces mandatory CI/parity/E2E.
+on:
+  pull_request:
+    paths:
+      - 'app/(teacher)/dashboard/**'
+      - 'app/(teacher)/schedule/**'
+      - 'components/teacher/schedule/**'
+      - 'lib/adaptive-home-calendar-presentation.test.ts'
+      - 'e2e/parity-daily-coaching.spec.ts'
+      - '.github/workflows/adaptive-home-calendar-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adaptive-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+
+      - name: Start local Supabase (migrations + seed)
+        run: |
+          supabase start
+          supabase db reset --yes
+
+      - name: Check declared row types against the materialized schema
+        run: |
+          {
+            printf 'BEGIN READ ONLY;\n'
+            cat scripts/schema-freeze-metadata.sql
+            printf 'ROLLBACK;\n'
+          } | docker exec -i supabase_db_chesscoachpal psql -XqAt -U postgres -d postgres -v ON_ERROR_STOP=1 > "$RUNNER_TEMP/ccp-schema-types.json"
+          node scripts/check-db-row-contracts.mjs "$RUNNER_TEMP/ccp-schema-types.json"
+
+      - name: Export Supabase keys to environment
+        run: |
+          eval "$(supabase status -o env)"
+          token_key="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+          echo "::add-mask::$token_key"
+          echo "::add-mask::${SERVICE_ROLE_KEY:-$SECRET_KEY}"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL:-http://127.0.0.1:54321}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY:-$PUBLISHABLE_KEY}"
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY:-$SECRET_KEY}"
+            echo "TOKEN_ENCRYPTION_KEY=$token_key"
+            echo "MCP_PUBLIC_ORIGIN=http://localhost:3000"
+            echo "LICHESS_API_ORIGIN=http://127.0.0.1:3999" # CI-only loopback OAuth provider, never production
+            echo "CCP_SYNTHETIC_VISION_ORIGIN=http://127.0.0.1:3998" # fixed loopback AI vision stub
+            echo "CCP_SYNTHETIC_RATINGS_ORIGIN=http://127.0.0.1:3995" # fixed public chess rating mock
+            echo "CCP_SYNTHETIC_STRIPE_ORIGIN=http://127.0.0.1:3997" # fixed loopback Stripe stub
+            echo "CCP_SYNTHETIC_AI_ORIGIN=http://127.0.0.1:3996" # fixed loopback optional AI mapping stub
+            echo "EMAIL_PROVIDER=smtp"
+            echo "SMTP_HOST=127.0.0.1"
+            echo "SMTP_PORT=54325"
+            echo "EMAIL_FROM_ADDRESS=notifications@chesscoachpal.test"
+          } >> "$GITHUB_ENV"
+
+      - name: Build app
+        run: npm run build
+
+      - name: Start app
+        run: |
+          npm run start &
+          npx --yes wait-on --timeout 60000 http://localhost:3000
+
+      - name: Install Playwright browsers
+        # GitHub-hosted runners have Chromium runtime libraries; avoid an
+        # extra apt font-package fetch (prior CI failed on Ubuntu mirror DNS).
+        # Browser launch still fails if any required library is missing.
+        run: npx playwright install chromium
+      - name: Focused signed calendar and Home parity
+        run: npx playwright test e2e/parity-daily-coaching.spec.ts
+      - name: Upload synthetic Home and Calendar screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-home-calendar-review
+          path: |
+            test-results/**/adaptive-home-*.png
+            test-results/**/calendar-*.png
+          if-no-files-found: warn
+          retention-days: 7
+  presentation-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run lib/adaptive-home-calendar-presentation.test.ts

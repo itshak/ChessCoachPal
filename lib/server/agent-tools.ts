@@ -63,7 +63,7 @@ import {teacherImageFenPropose,imageFenInputSchema,ImageFenError} from "@/lib/se
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CoachError, attendanceList, attendanceRecord, attendanceBulkRecord, groupsList, groupsMembers,
-  sessionsList, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
+  sessionsList, sessionsDetails, sessionsParticipants, sessionsAdHocCreate, sessionsUpdate, sessionsComplete,
   studentsSearch, workplacesList, workplacesEnrollments, workplacesUnenroll,
   workplacesUnenrollPreview,
 } from "@/lib/server/coach-service";
@@ -310,7 +310,7 @@ const catalogue = [
   },
   {
     name: "ccp_dashboard_summary",
-    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, read bounded upcoming lessons (continue with daily.nextUpcomingAfter as upcomingAfter for the same date and workplace), frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
+    description: "Read dashboard totals. Omit workplaceId for the active selection, use null for All, or pass an owned ID. Workplace count is teacher-wide. With a YYYY-MM-DD date, also return nextScheduled (earliest future persisted scheduled occurrence across dates, or explicit unavailable/empty) and read bounded upcoming lessons (continue with daily.nextUpcomingAfter as upcomingAfter for the same date and workplace), frozen-roster attendance issues, and dated rating lookup receipts (All only). Homework is due-through with current reviews (All only); use homeworkAfter with the same date. closeReview:true lists ended lessons awaiting completion regardless of attendance. ratingFreshness:true returns a bounded sample of current saved checks for today in All, not a roster total, historical view or provider call. Read-only; no inferred teaching or billing.",
     schema: teacherDashboardSummaryInput, scope: "coach:read", readOnly: true,
   },
   {
@@ -1306,7 +1306,7 @@ const catalogue = [
   },
   {
     name: "ccp_students_roster",
-    description: "Page through active learners by default or explicitly include archived learners. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Learning homework uses this roster for learner discovery only; materials and assignments of an identified learner stay teacher-owned. Current members use the workplace’s local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
+    description: "Page through active learners by default or explicitly include archived learners. Optional query matches names and aliases, as in the website directory. Omit workplaceId or use null for the global identity catalogue; use context for the teacher’s selected roster or supply an owned workplace UUID. Learning homework uses this roster for learner discovery only; materials and assignments of an identified learner stay teacher-owned. Current members use the workplace’s local date; archived pupils qualify only through a started, noncancelled membership period there. Private notes and guardian contacts are excluded.",
     schema: z.object({query:z.string().trim().max(80).optional(),workplaceId:studentRosterWorkplaceFilter,
       includeArchived:z.boolean().default(false),archivedOnly:z.boolean().default(false),
       offset:z.number().int().min(0).max(100000).default(0),limit:z.number().int().min(1).max(100).default(50)}).strict(),
@@ -1723,7 +1723,7 @@ const catalogue = [
   },
   {
     name:"ccp_sessions_details",
-    description:"Read one identified lesson, including its current revision and frozen roster.",
+    description:"Read one identified lesson, including its current revision, saved session timezone (or workplace/UTC fallback), and frozen roster.",
     schema:sessionId,scope:"coach:read",readOnly:true,
   },
   {
@@ -3040,13 +3040,8 @@ export async function runTool(db: SupabaseClient, teacherId: string,
            a.includePrivate&&a.confirmed===true)};
        }
        case "ccp_sessions_details": {
-        const id=(args as {sessionId:string}).sessionId;
-        const {data,error}=await db.from("teaching_sessions")
-          .select("id,title,starts_at,duration_minutes,lesson_note,status,workplace_id,group_id,student_id,updated_at")
-          .eq("teacher_id",teacherId).eq("id",id).maybeSingle();
-        if (error) throw new CoachError("DATABASE_ERROR",500,"Lesson lookup failed");
-        if (!data) return {error:{code:"NOT_FOUND",message:"Lesson not found"}};
-        return {data:{...data,participants:await sessionsParticipants(db,teacherId,id)}};
+        const data=await sessionsDetails(db,teacherId,(args as {sessionId:string}).sessionId);
+        return data?{data}:{error:{code:"NOT_FOUND",message:"Lesson not found"}};
       }
       case "ccp_workplaces_list":
         return { data: await workplacesList(db, teacherId) };

@@ -11,8 +11,8 @@
 - [ ] Define synthetic identical coach fixtures, evaluation criteria, preview access and non-production isolation.
 
 ## 1. Design laboratory — required before redesign
-- [ ] Build working component comparison for Base UI, React Aria and Ariakit: dialogs, menus, combobox/search, forms, keyboard commands and validation.
-- [ ] Build at least six tokenized palette candidates including Slate & Periwinkle, Graphite & Sage, Ink & Parchment and three genuinely different alternatives.
+- [x] Build working component comparison for Base UI, React Aria and Ariakit: dialogs, menus, combobox/search, forms, keyboard commands and validation. Extended to Ark UI, Radix UI + cmdk and Headless UI; all six common browser workflows passed in [CI run 45909026150](https://github.com/itshak/ChessCoachPal/actions/runs/45909026150).
+- [x] Build at least six tokenized palette candidates including Slate & Periwinkle, Graphite & Sage, Ink & Parchment and three genuinely different alternatives. Thirteen palettes including baseline; candidate normal-text contrast and secondary-token switching verified. User selected Graphite, Iris & Champagne and Ark UI for continued design review; no final logo/layout or rollout approval.
 - [ ] Build compact professional, editorial teaching desk and command-first hybrid layout variants; avoid same-card recoloring.
 - [ ] Build functional synthetic Today, Students/profile and Lesson prep/close scenarios; provide side-by-side baseline comparisons.
 - [ ] Support interactive palette, foundation, typography and density switches with dark/light, desktop/mobile, Hebrew RTL and English/Russian stress tests.
@@ -35,3 +35,9 @@
 
 ## Non-goal guardrail
 - [ ] Verify no production redesign, schema change, deployment or confidential strategy publication was performed merely by creating this OpenSpec proposal.
+
+> Brand refinement decision (2026-11-27): user approved same-color chess pieces (Pearl #F1F2F8 in dark, Graphite #1C1D23 in light), Champagne book and unchanged traced knight/curved pawn geometry for Mentor & pupil and Compact coaching mark. Optical framing and final asset review remain open; do not treat this as approval of the full design-lab gate or production rollout.
+
+> Responsive architecture decision (2026-11-27): user approved adaptive three/two/one-column shell and requested a focused working prototype without settled design controls. Default prototype now replaces the lab landing, with historical comparisons retained at `?lab=1`. Responsive behavior, calendar/overview, touch navigation, evidence and workload validation remain subject to review. Production rollout gate remains open.
+
+> Integration decision (2026-11-27): user approved the focused prototype as the implementation direction and explicitly authorized consolidating and continuing production-source work in PR #273. The earlier design-exploration stop is satisfied for implementation, not release acceptance. Do not reopen the selected foundation, palette, branding or responsive architecture. Outstanding visual, functional, parity, and release checks remain unchecked. The separate teacher-owned material collection proposal remains schema-gated.

@@ -35,7 +35,7 @@ export default async function LearningPage({searchParams}:{searchParams:Promise<
       ? await teacherDailyHomeworkFocus(db,user.id,input.data)
       : {status:"not_actionable" as const};
     const back=input.success ? "/dashboard?date="+input.data.dueThrough+"#daily-homework" : "/dashboard";
-    return <div className="max-w-3xl mx-auto px-4 py-8">
+    return <div className="ccp-focused-page">
       <section aria-labelledby="daily-homework-focus" className="space-y-4">
         <h1 id="daily-homework-focus" className="text-2xl font-bold">{home("dailyHomeworkFocus")}</h1>
         {result.status==="ready" ? <>
@@ -53,10 +53,24 @@ export default async function LearningPage({searchParams}:{searchParams:Promise<
   }
   const {selectedWorkplaceId:workplaceId,workplaces}=await teacherWorkplaceContextGet(db,user.id);
   const scope=workplaceId??"all";
-  return <div className="max-w-6xl mx-auto px-4 py-8">
-    <h1 className="text-2xl font-bold mb-6">{t("learning")}</h1>
-    <div className="space-y-8"><LearningMaterialsCatalog /><TrainingHomeworkPanel key={"homework:"+scope} workplaceId={workplaceId} /><LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel />
-      <StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher /><ChessLearningPanel key={"learning:"+scope} workplaceId={workplaceId} />
-      <MaterialHistoryPanel key={"materials:"+scope} initialWorkplaceId={workplaceId} initialWorkplaces={workplaces} /></div>
+  const materials=await getTranslations("materialCatalog");
+  const lichessName="Lichess";
+  return <div className="space-y-6">
+    <h1 className="text-2xl font-bold ccp-mobile-sr-only">{t("learning")}</h1>
+    <nav className="flex flex-wrap gap-2 border-b border-border pb-3" aria-label={t("learning")}>
+      <a className="min-h-11 content-center rounded-lg px-3 text-primary" href="#material-library">{materials("title")}</a>
+      <a className="min-h-11 content-center rounded-lg px-3 text-primary" href="#lichess-library">{lichessName}</a>
+      <a className="min-h-11 content-center rounded-lg px-3 text-primary" href="#learning-evidence">{materials("teachingEvidence")}</a>
+    </nav>
+    <div id="material-library" className="scroll-mt-24"><LearningMaterialsCatalog /></div>
+    <section id="lichess-library" className="scroll-mt-24 space-y-5 border-t border-border pt-6">
+      <h2 className="text-xl font-semibold">{lichessName}</h2>
+      <LichessConnectionPanel /><LichessStudyExplorer /><StudyPreferencesPanel /><StudyChapterEvidencePanel /><PuzzleSeriesPanel /><FenReviewPanel /><LichessPuzzlePublisher />
+    </section>
+    <section id="learning-evidence" className="scroll-mt-24 space-y-5 border-t border-border pt-6">
+      <h2 className="text-xl font-semibold">{materials("teachingEvidence")}</h2>
+      <TrainingHomeworkPanel key={"homework:"+scope} workplaceId={workplaceId} /><ChessLearningPanel key={"learning:"+scope} workplaceId={workplaceId} />
+      <MaterialHistoryPanel key={"materials:"+scope} initialWorkplaceId={workplaceId} initialWorkplaces={workplaces} />
+    </section>
   </div>;
 }

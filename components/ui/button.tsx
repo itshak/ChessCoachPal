@@ -10,19 +10,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-primary text-white hover:bg-primary-dark focus:ring-primary/40",
+    "bg-primary text-on-primary hover:bg-primary-dark focus:ring-primary/40",
   secondary:
     "bg-surface text-foreground border border-border hover:bg-surface-dim focus:ring-primary/20",
   ghost:
     "bg-transparent text-foreground hover:bg-surface-dim focus:ring-primary/20",
   success:
-    "bg-success text-white hover:bg-success/90 focus:ring-success/40",
+    "bg-success text-on-success hover:bg-success/90 focus:ring-success/40",
   successLight:
-    "bg-[#8ed491] text-white hover:bg-[#7cc880] focus:ring-success/40",
+    "bg-success-light text-on-success-light hover:bg-success-light/90 focus:ring-success/40",
   warning:
-    "bg-warning text-foreground hover:bg-warning/90 focus:ring-warning/40",
+    "bg-warning text-on-warning hover:bg-warning/90 focus:ring-warning/40",
   error:
-    "bg-error text-white hover:bg-error/90 focus:ring-error/40",
+    "bg-error text-on-error hover:bg-error/90 focus:ring-error/40",
 };
 
 const sizeClasses: Record<Size, string> = {
@@ -39,7 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={`
           inline-flex items-center justify-center self-start font-semibold
-          transition-all duration-150 focus:outline-none focus:ring-2
+          transition-all duration-150 focus-visible:ring-2
           disabled:opacity-50 disabled:cursor-not-allowed
           cursor-pointer select-none
           ${variantClasses[variant]}

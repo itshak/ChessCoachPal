@@ -89,6 +89,20 @@ test("PARITY: Coaching drafts and lesson discovery follow selected workplace wit
   expect(await httpMaterial.json()).toEqual(scopedMaterial.data);
   const before=await admin.from("teaching_sessions").select("id",{count:"exact",head:true}).eq("teacher_id",teacherId);
   expect(before.error).toBeNull();expect(before.count).toBe(2);
+  const upcoming=await call("ccp_sessions_create",{
+   workplaceId:school,studentId,title:"Synthetic next lesson",durationMinutes:45,
+   startsAt:new Date(Date.now()+2*86400000).toISOString(),idempotencyKey:randomUUID(),
+  });
+  expect(upcoming.error).toBeUndefined();
+  const upcomingId=upcoming.data.entityId as string;
+  const prepare=await call("ccp_lesson_preparation_get",{sessionId:upcomingId});
+  expect(prepare.error).toBeUndefined();
+  expect(prepare.data.lesson).toMatchObject({id:upcomingId,title:"Synthetic next lesson"});
+  await page.goto("/students/"+studentId);
+  const next=page.locator('section[aria-labelledby="next-student-lesson"]');
+  await expect(next.getByRole("heading",{name:"Synthetic next lesson"})).toBeVisible();
+  await expect(next.locator("a")).toHaveAttribute("href","/dashboard?prepareSession="+upcomingId+"#lesson-preparation");
+
   expect((await call("ccp_workplace_context_set",{selectedWorkplaceId:null,expectedSelectedWorkplaceId:school,confirmed:true})).error).toBeUndefined();
   await page.goto("/coaching");
   await expect(captureVenue).toHaveValue("");

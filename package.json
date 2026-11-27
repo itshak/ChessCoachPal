@@ -35,6 +35,7 @@
     "schema:final:inventory:strict": "node scripts/final-schema-source-inventory.mjs --strict"
   },
   "dependencies": {
+    "@ark-ui/react": "5.37.0",
     "@floating-ui/dom": "^1.8.0",
     "@pdf-lib/fontkit": "1.1.1",
     "@supabase/ssr": "^0.9.0",

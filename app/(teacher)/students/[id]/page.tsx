@@ -31,6 +31,9 @@ import { getPolicy } from "@/lib/server/scheduling";
 import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
 import {withCreditFundingReport} from "@/lib/server/credit-package-funding";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
+import {StudentDirectory} from "../StudentDirectory";
+import {RouteMasterDetail} from "@/components/ui/workspace-layout";
+import {NextStudentLesson} from "./NextStudentLesson";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -42,7 +45,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: data?.name ?? t("student") };
 }
 
-export default async function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function StudentDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{show?:string;q?:string}> }) {
   const { id } = await params;
   const t=await getTranslations("studentDetail");
   const supabase = await createClient();
@@ -114,13 +117,32 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     .filter(a=>a.effective_from<=today&&(a.effective_to===null||a.effective_to>=today))
     .map(a=>a.workplace_id));
   const creditWorkplaces=sharingWorkplaces.filter(w=>activePayers.has(w.id));
+  const rosterParams=await searchParams;
+  const directoryParams={show: rosterParams.show ?? (student.archived_at ? "archived" : undefined), q: typeof rosterParams.q==="string" ? rosterParams.q.slice(0,80) : undefined};
+  const backQuery=new URLSearchParams();
+  if(directoryParams.show==="archived")backQuery.set("show","archived");
+  if(directoryParams.q)backQuery.set("q",directoryParams.q);
+  const backHref="/students"+(backQuery.size?"?"+backQuery.toString():"")+"#student-row-"+id;
+  const st=await getTranslations("students");
+  const common=await getTranslations("common");
+  const history=await getTranslations("lessonHistory");
 
   return (
-    <div>
-      <Link href="/students" className="inline-block mb-6 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+    <div className="ccp-student-workspace">
+      <RouteMasterDetail key={id} masterLabel={st("title")} detailLabel={st("profile")} mobileDetail={true} backHref={backHref} showMobileBack={false}
+      master={<StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>}
+      detail={<article className="min-w-0 text-base leading-relaxed">
+      <Link href={backHref} className="inline-flex min-h-11 items-center gap-2 mb-3 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
+      <header className="border-b border-border pb-5 mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
           <EditableStudentName studentId={id} initialName={student.name} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+            <span>{student.archived_at?st("archived"):st("active")}</span>
+            {student.level&&<bdi dir="auto">{student.level}</bdi>}
+            {sharingWorkplaces.map(w=><bdi dir="auto" key={w.id}>{w.name}</bdi>)}
+          </div>
+          {Boolean(student.name_aliases?.length)&&<p className="text-sm text-muted mt-1 break-words"><bdi dir="auto">{student.name_aliases?.join(" · ")}</bdi></p>}
           <a href="#student-contacts" className="text-sm text-primary hover:underline">
             {t("contacts")}
           </a>
@@ -134,19 +156,29 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      <StudentInfoCard
-        studentId={id}
-        initialLevel={student.level ?? null}
-        initialBirthdate={student.birthdate ?? null}
-        initialPracticeStartDate={student.practice_start_date ?? null}
-        createdAt={student.created_at}
-        initialDefaultRateCents={student.default_rate_cents ?? null}
-        initialTravelFeeCents={student.travel_fee_cents ?? null}
-      />
-      <StudentContactsPanel studentId={id} />
-      <StudentBillingAssignmentsPanel studentId={id} workplaces={sharingWorkplaces}/>
-      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces} timeZone={policy.timezone}/>
-      <StudentChessProfileEditor
+      <dl className="ccp-metrics">
+        {[
+          {label:st("teacherStrength"),value:student.strength==null?common("unknown"):`${student.strength}/10`},
+          {label:st("lichessRating"),value:student.lichess_rating??common("unknown")},
+          {label:st("chesscomRating"),value:student.chesscom_rating??common("unknown")},
+        ].map(metric=><div key={metric.label} className="min-w-0"><dt className="text-sm text-muted">{metric.label}</dt><dd className="mt-1 text-2xl font-semibold tabular-nums">{metric.value}</dd></div>)}
+      </dl>
+      </header>
+      <nav aria-label={st("profile")} className="flex flex-wrap gap-2 mb-5">
+        {[["#student-learning",history("title")],["#student-ratings",st("chessProfile")],["#student-contacts",t("contacts")],["#student-progress",t("progress")]].map(([href,label])=><a key={href} href={href} className="inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm text-primary">{label}</a>)}
+      </nav>
+      <section id="student-learning" className="scroll-mt-4 space-y-4 mb-6">
+      {!student.archived_at&&<NextStudentLesson db={supabase} teacherId={user.id} studentId={id} timezone={policy.timezone}/>}
+      <CoachBriefingPanel key={id} studentId={id} />
+      <LearnerEvidencePanel evidence={learnerEvidence} />
+      <UnifiedLessonHistoryPanel key={id} fixedStudentId={id}/>
+      <MaterialHistoryPanel fixedStudentId={id}/>
+      <StudentTrainingPlansPanel studentId={id} />
+      <StudentLessonNotes key={id} notes={lessonNotes} timezone={policy.timezone} />
+      <StudentNotesEditor key={id+":"+(student.teacher_notes??"").length} studentId={id} initialNotes={student.teacher_notes ?? ""}/>
+      </section>
+      <section id="student-ratings" className="scroll-mt-4 space-y-3 mb-6">
+      <StudentChessProfileEditor key={id}
         studentId={id}
         initialAliases={student.name_aliases ?? []}
         initialStrength={student.strength ?? null}
@@ -160,6 +192,19 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
       <StudentAutomaticRatingsPanel studentId={id} />
       <StudentRatingHistoryPanel studentId={id} />
       <StudentFederationsPanel studentId={id} />
+      </section>
+      <StudentInfoCard
+        studentId={id}
+        initialLevel={student.level ?? null}
+        initialBirthdate={student.birthdate ?? null}
+        initialPracticeStartDate={student.practice_start_date ?? null}
+        createdAt={student.created_at}
+        initialDefaultRateCents={student.default_rate_cents ?? null}
+        initialTravelFeeCents={student.travel_fee_cents ?? null}
+      />
+      <StudentContactsPanel studentId={id} />
+      <StudentBillingAssignmentsPanel studentId={id} workplaces={sharingWorkplaces}/>
+      <StudentPortalSharingPanel studentId={id} workplaces={sharingWorkplaces} timeZone={policy.timezone}/>
       <CreditPackagesCard
         studentId={id}
         hasBillingAccount={!payerReadError&&creditWorkplaces.length>0}
@@ -184,24 +229,14 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         rateBasis={policy.rate_basis}
       />
 
-      <StudentNotesEditor
-        key={(student.teacher_notes ?? "").length}
-        studentId={id}
-        initialNotes={student.teacher_notes ?? ""}
-      />
-      <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
-      <StudentTrainingPlansPanel studentId={id} />
-      <CoachBriefingPanel studentId={id} />
-      <LearnerEvidencePanel evidence={learnerEvidence} />
       <LearnerReportPreviewPanel studentId={id} workplaces={workplaceRows??[]} />
-      <div className="mb-8"><UnifiedLessonHistoryPanel fixedStudentId={id}/></div>
-      <div className="mb-8"><MaterialHistoryPanel fixedStudentId={id} /></div>
 
-      <h2 className="text-lg font-semibold mb-3">{t("progress")}</h2>
+      <h2 id="student-progress" className="scroll-mt-4 text-lg font-semibold mb-3">{t("progress")}</h2>
       <div className="mb-8">
         <SkillsPanel studentId={id} dimensions={dimensions} assessments={assessments ?? []} />
       </div>
       <ChessLearningPanel fixedStudentId={id} />
+      </article>}/>
     </div>
   );
 }

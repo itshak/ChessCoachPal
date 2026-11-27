@@ -2,13 +2,15 @@
 
 import {useLocalizedApiError} from "@/i18n/use-localized-api-error";
 
-import {useMemo,useState} from "react";
+import {useMemo,useState,useRef,useEffect} from "react";
+import {calendarCopy,calendarDates,calendarHref,calendarRange,calendarDetailHash,calendarDetailId,type CalendarView} from "./calendar-view";
+import "./calendar-layout.css";
 import {useLocale,useTranslations} from "next-intl";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {useToast} from "@/components/ui/toast";
 import type {CanonicalCalendarRow} from "@/lib/server/canonical-calendar-read";
-import {addDays,toLocalDateString,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
+import {toLocalDateString,formatLessonTime,zonedTimeToUtc} from "@/lib/schedule";
 
 type Student={id:string;name:string};
 type Workplace={id:string;name:string;localToday:string};
@@ -21,6 +23,8 @@ type NoteRow={
  id:string;student_id:string|null;body:string;private_body?:string;
  shared_with_contacts:boolean;updated_at:string;emailed_at:string|null;
 };
+type EditorTab="attendance"|"notes"|"schedule";
+type DetailTab="overview"|EditorTab;
 type Decision="present"|"late"|"absent"|"excused"|"student_cancelled"|"teacher_cancelled";
 const DECISIONS:Record<Decision,string>={
  present:"Present",late:"Arrived late",absent:"Absent / no-show",
@@ -41,19 +45,29 @@ async function jsonResponse(res:Response){
  * participant, and all writes use the exact website/MCP domain operations.
  */
 export function CanonicalScheduleBoard({
- weekStart,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,sessions,events,students,workplaces,durationOptions,
+ weekStart,rangeEnd,anchorDate,view,calendarStatus,nowIso,today,timezone,personalToday,selectedWorkplaceId,workplaceTimezones,workplaceNames,sessions,events,students,workplaces,durationOptions,
 }:{
- weekStart:string;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
- workplaceTimezones:Readonly<Record<string,string>>;
+ weekStart:string;rangeEnd:string;anchorDate:string;view:CalendarView;calendarStatus:"ready"|"partial"|"unavailable";nowIso:string;today:string;timezone:string;personalToday:string;selectedWorkplaceId:string|null;
+ workplaceTimezones:Readonly<Record<string,string>>;workplaceNames:Readonly<Record<string,string>>;
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
 }){
+ const currentPage="page" as const;
  const router=useRouter(),{showToast}=useToast();
  const t=useTranslations("calendar");
  const toUserError=useLocalizedApiError();
  const uiLocale=useLocale();
+ const words=calendarCopy(uiLocale);
+ const range=calendarRange(anchorDate,view);
+ const origin=useRef<{scroll:number;focus:HTMLElement|null}|null>(null);
+ const detailRef=useRef<HTMLDivElement>(null);
+ const lastDetailId=useRef<string|null>(null);
+ const ownsDetailEntry=useRef(false);
+ const readSequence=useRef(0);
+ const writePending=useRef(false);
  const [open,setOpen]=useState<CanonicalCalendarRow|null>(null);
- const [tab,setTab]=useState<"attendance"|"notes"|"schedule">("attendance");
+ const [detailMissing,setDetailMissing]=useState(false);
+ const [tab,setTab]=useState<DetailTab>("overview");
  const [moveDate,setMoveDate]=useState(today);
  const [moveTime,setMoveTime]=useState("16:00");
  const [moveDuration,setMoveDuration]=useState(60);
@@ -80,7 +94,75 @@ export function CanonicalScheduleBoard({
  const [addTime,setAddTime]=useState("16:00");
  const [addDuration,setAddDuration]=useState(60);
  const [addHomeVisit,setAddHomeVisit]=useState(false);
- const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+ const days=useMemo(()=>calendarDates(weekStart,rangeEnd),[weekStart,rangeEnd]);
+ const openId=open?.id;
+ useEffect(()=>{
+  if(openId){
+   if(window.matchMedia("(max-width:799px)").matches)window.scrollTo(0,0);
+   else if(window.matchMedia("(max-width:1279px)").matches)detailRef.current?.scrollIntoView({block:"nearest"});
+   detailRef.current?.focus({preventScroll:true});
+  }
+ },[openId]);
+ function restoreList(){
+  readSequence.current+=1;
+  setOpen(null);setDetailMissing(false);if(!writePending.current)setBusy(false);setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+  const previous=origin.current;origin.current=null;
+  if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
+ }
+ function closeDetail(){
+  const hasDetail=calendarDetailId(window.location.hash);
+  if(hasDetail){
+   const wasPushed=ownsDetailEntry.current;
+   if(wasPushed){window.history.back();return;}
+   ownsDetailEntry.current=false;lastDetailId.current=null;
+   const url=new URL(window.location.href);url.hash="";
+   window.history.replaceState(null,"",url);
+  }
+  restoreList();
+ }
+ // Browser history carries only a visible canonical UUID, never a private note
+ // or draft. Reload/Forward opens the read-only overview; Notes always requires
+ // a fresh, explicit click. Unknown/out-of-context IDs cannot select a fallback.
+ useEffect(()=>{
+  function sync(){
+   const id=calendarDetailId(window.location.hash);
+   if(id===lastDetailId.current)return;
+   const previousId=lastDetailId.current;
+   lastDetailId.current=id;ownsDetailEntry.current=Boolean(id&&window.history.state?.ccpCalendarDetail===true);
+   readSequence.current+=1;
+   setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+   if(id){
+    const session=sessions.find(row=>row.id===id);
+    setOpen(session??null);setDetailMissing(!session);setTab("overview");if(!writePending.current)setBusy(false);
+   }else if(previousId){
+    setOpen(null);setDetailMissing(false);if(!writePending.current)setBusy(false);
+    const previous=origin.current;origin.current=null;
+    if(previous)requestAnimationFrame(()=>{window.scrollTo(0,previous.scroll);previous.focus?.focus({preventScroll:true});});
+   }
+  }
+  const frame=requestAnimationFrame(sync);
+  window.addEventListener("popstate",sync);
+  window.addEventListener("hashchange",sync);
+  return()=>{cancelAnimationFrame(frame);window.removeEventListener("popstate",sync);window.removeEventListener("hashchange",sync)};
+ },[sessions]);
+ function rememberOrigin(){
+  if(!open)origin.current={scroll:window.scrollY,focus:document.activeElement instanceof HTMLElement?document.activeElement:null};
+ }
+ function showDetail(session:CanonicalCalendarRow,section:DetailTab){
+  const currentDetail=calendarDetailId(window.location.hash);
+  if((currentDetail||window.matchMedia("(max-width:799px)").matches)&&currentDetail!==session.id){
+   const hash=calendarDetailHash(session.id);
+   if(currentDetail)window.history.replaceState({ccpCalendarDetail:ownsDetailEntry.current},"",hash);
+   else{window.history.pushState({ccpCalendarDetail:true},"",hash);ownsDetailEntry.current=true;}
+   lastDetailId.current=session.id;
+  }
+  setOpen(session);setDetailMissing(false);setTab(section);
+ }
+ function selectSession(session:CanonicalCalendarRow){
+  rememberOrigin();readSequence.current+=1;
+  setNotes([]);setPrivateBody("");setBody("");setRegister([]);
+  showDetail(session,"overview");
+ }
  const byDay=useMemo(()=>{
   const daysMap=new Map<string,CanonicalCalendarRow[]>();
   for(const session of sessions){
@@ -110,7 +192,9 @@ export function CanonicalScheduleBoard({
   setShareWithContacts(item?.shared_with_contacts??false);
   setEmailContacts(false);
  }
- async function openSession(session:CanonicalCalendarRow,section:"attendance"|"notes"|"schedule"){
+ async function openSession(session:CanonicalCalendarRow,section:EditorTab){
+  rememberOrigin();
+  const sequence=++readSequence.current;
   setBusy(true);
   try{
    const path="/api/coaching/sessions/"+session.id;
@@ -120,8 +204,10 @@ export function CanonicalScheduleBoard({
     path+"/notes?includePrivate=true&confirmed=true":path+"/attendance";
    const rows=section==="schedule"?[]:
     await jsonResponse(await fetch(endpoint,{cache:"no-store"}));
+   if(sequence!==readSequence.current)return;
    if(!Array.isArray(rows))throw new Error(t("invalidRegister"));
-   setOpen(session);setTab(section);
+   if(section!=="notes"){setNotes([]);setBody("");setPrivateBody("");}
+   showDetail(session,section);
    if(section==="schedule"){
     const zone=session.local_timezone||workplaceTimezones[session.workplace_id]||timezone;
     setMoveDate(toLocalDateString(new Date(session.starts_at),zone));
@@ -137,15 +223,16 @@ export function CanonicalScheduleBoard({
    }else{
     setRegister(rows as AttendanceRow[]);loadDecision(first,rows as AttendanceRow[]);
    }
-  }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  }catch(e){if(sequence===readSequence.current)showToast(toUserError(e, t("saveError")),"error")}
+  finally{if(sequence===readSequence.current)setBusy(false)}
  }
  async function saveAttendance(){
   if(!open||!selectedStudent)return;
   if(draftStatus==="student_cancelled"&&!noticeAt){
    showToast(t("studentNoticeRequired"),"error");return;
   }
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    const result=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{
@@ -161,16 +248,16 @@ export function CanonicalScheduleBoard({
     }));
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
-   setRegister(fresh);
-   loadDecision(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setRegister(fresh);loadDecision(selectedStudent,fresh);}
    showToast(result.emailQueued?t("attendanceSavedEmailQueued"):"Attendance saved");
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function saveNotes(){
   if(!open||!selectedStudent)return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    const result=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/notes",{
@@ -186,11 +273,11 @@ export function CanonicalScheduleBoard({
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/notes?includePrivate=true&confirmed=true",
     {cache:"no-store"}));
-   setNotes(fresh);loadNote(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setNotes(fresh);loadNote(selectedStudent,fresh);}
    showToast(result.emailQueued?t("notesSavedEmailQueued"):t("notesSaved"));
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
 
  async function saveSchedule(){
@@ -199,7 +286,8 @@ export function CanonicalScheduleBoard({
   try{
    startsAt=zonedTimeToUtc(moveDate,moveTime,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,"reject").toISOString();
   }catch{showToast(t("invalidLocalTime"),"error");return;}
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
     method:"PATCH",headers:{"Content-Type":"application/json"},
@@ -207,29 +295,31 @@ export function CanonicalScheduleBoard({
       isHomeVisit:moveHomeVisit,
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   setOpen(null);showToast(t("rescheduled"));router.refresh();
+   if(selectionSequence===readSequence.current)closeDetail();showToast(t("rescheduled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function cancelTeachingSession(){
   if(!open)return;
   if(!window.confirm(t("cancelSessionConfirm")))return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/lifecycle",{
     method:"PATCH",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({status:"cancelled",
       expectedUpdatedAt:open.updated_at,idempotencyKey:crypto.randomUUID()}),
    }));
-   setOpen(null);showToast(t("sessionCancelled"));router.refresh();
+   if(selectionSequence===readSequence.current)closeDetail();showToast(t("sessionCancelled"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function bulkAttendance(){
   if(!open||!register.length)return;
   if(bulkDecision==="teacher_cancelled"&&notifyFamily&&
     !window.confirm(t("confirmFamilyCancellation")))return;
-  setBusy(true);
+  const selectionSequence=readSequence.current;
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/sessions/"+open.id+"/attendance",{
     method:"POST",headers:{"Content-Type":"application/json"},
@@ -246,14 +336,14 @@ export function CanonicalScheduleBoard({
    }));
    const fresh=await jsonResponse(await fetch(
     "/api/coaching/sessions/"+open.id+"/attendance",{cache:"no-store"}));
-   setRegister(fresh);loadDecision(selectedStudent,fresh);
+   if(selectionSequence===readSequence.current){setRegister(fresh);loadDecision(selectedStudent,fresh);}
    showToast(t("allAttendanceUpdated"));router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
  async function addPrivateSession(){
   if(!addStudent)return showToast(t("chooseStudent"),"error");
-  setBusy(true);
+  writePending.current=true;setBusy(true);
   try{
    await jsonResponse(await fetch("/api/coaching/calendar/private-sessions",{
     method:"POST",headers:{"Content-Type":"application/json"},
@@ -266,16 +356,28 @@ export function CanonicalScheduleBoard({
    setAddOpen(false);showToast(t("privateSessionScheduled"));
    router.refresh();
   }catch(e){showToast(toUserError(e, t("saveError")),"error")}
-  finally{setBusy(false)}
+  finally{writePending.current=false;setBusy(false)}
  }
- return <div className="space-y-5">
-  <div className="flex flex-wrap gap-3 items-center justify-between">
-   <div className="flex gap-3 items-center">
-    <Link className="text-primary hover:underline" href={"/schedule?week="+addDays(weekStart,-7)}>{t("previous")}</Link>
-    <span className="text-sm font-medium">{weekStart} – {addDays(weekStart,6)}</span>
-    <Link className="text-primary hover:underline" href={"/schedule?week="+addDays(weekStart,7)}>{t("next")}</Link>
-    <Link className="text-primary hover:underline" href="/schedule">{t("today")}</Link>
+ return <div className="space-y-5 ccp-calendar" data-detail-open={!!open} data-view={view}>
+  <div className="ccp-calendar-controls flex flex-wrap gap-3 items-center justify-between">
+   <div className="flex flex-wrap gap-3 items-center">
+    <Link className="text-primary hover:underline" href={calendarHref(range.previous,view)}>{t("previous")}</Link>
+    <span className="font-medium"><bdi>{weekStart} – {rangeEnd}</bdi></span>
+    <Link className="text-primary hover:underline" href={calendarHref(range.next,view)}>{t("next")}</Link>
+    <Link className="text-primary hover:underline" href={calendarHref(today,view)}>{t("today")}</Link>
    </div>
+   <nav aria-label={words.view} className="flex flex-wrap gap-2">
+    {(["agenda","week","month","day"] as const).map(mode=><Link key={mode}
+      data-view-choice={mode} aria-current={view===mode?currentPage:undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
+      href={calendarHref(anchorDate,mode)}>{words[mode]}</Link>)}
+   </nav>
+   <form method="get" action="/schedule" className="flex flex-wrap gap-2 items-center">
+    {view!=="auto"&&<input type="hidden" name="view" value={view}/>}
+    <label className="flex flex-wrap gap-2 items-center">{words.date}
+     <input className="rounded border border-border px-2 py-1" name="week" type="date" min="1900-01-01" max="9998-12-31" defaultValue={anchorDate} required/>
+    </label>
+    <button className="text-primary underline" type="submit">{t("date")}</button>
+   </form>
    <button className="rounded-lg border border-primary px-3 py-2 text-sm text-primary hover:bg-primary/10"
     onClick={()=>{
       if(!addOpen){
@@ -284,7 +386,7 @@ export function CanonicalScheduleBoard({
       setAddOpen(!addOpen);
     }}>+ {t("privateSessionButton")}</button>
   </div>
-  {addOpen&&<div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+  {addOpen&&<div className="ccp-calendar-controls rounded-xl border border-border bg-surface p-4 space-y-3">
    <h3 className="font-medium">{t("individualLesson")}</h3>
    <div className="grid sm:grid-cols-3 gap-3">
     <label className="text-sm">{t("student")}
@@ -322,22 +424,30 @@ export function CanonicalScheduleBoard({
    <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground text-sm"
     disabled={busy} onClick={addPrivateSession}>{t("createSession")}</button>
   </div>}
-  <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-   {days.map((date,i)=><div key={date} data-calendar-date={date} className={
-    "min-h-28 rounded-xl border p-2 "+
+  {detailMissing&&<p role="alert">{t("lessonLinkUnavailable")}</p>}
+  {calendarStatus!=="ready"&&<p role="alert">{calendarStatus==="partial"?words.partial:words.unavailable}</p>}
+  <div className="ccp-calendar-workspace">
+  <div className="ccp-calendar-list" data-view={view}>
+   {days.map(date=><div key={date} data-calendar-date={date} data-empty={!byDay.get(date)?.length&&!events.some(e=>e.localDate===date)} className={
+    "ccp-calendar-day min-w-0 border-b border-border p-2 "+
      (date===today?"border-primary/60 bg-primary/5":"border-border bg-surface")
    }>
-    <div className="text-xs font-semibold mb-3">{t((["sun","mon","tue","wed","thu","fri","sat"] as const)[i])} {date.slice(5)}</div>
+    <Link href={calendarHref(date,"day")} className="block font-semibold mb-2 hover:underline">
+     {new Intl.DateTimeFormat(uiLocale,{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(date+"T12:00:00Z"))}
+    </Link>
+    <span className="ccp-calendar-mobile-count">{(byDay.get(date)?.length??0)+events.filter(e=>e.localDate===date).length}</span>
     {events.filter(e=>e.localDate===date).map(e=><Link key={e.id} href={"/events/"+e.id}
       className="block rounded-lg border border-accent/40 bg-accent/10 p-2 text-xs mb-2">
       <b>{t("event")}</b> {e.title}
     </Link>)}
     {(byDay.get(date)??[]).map(session=><div key={session.id}
-      className="rounded-lg border border-border bg-background p-2 text-xs mb-2 space-y-1">
-      <div className="font-medium">{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</div>
-      <div className="text-foreground break-all">{session.participants.map(p=>p.name).join(", ")}</div>
-      <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):t("scheduled")}</div>
-      <div className="flex gap-2">
+      data-calendar-session={session.id} className="ccp-calendar-record border-b border-border p-2 mb-2 space-y-1 min-w-0">
+      <button className="block text-start font-medium hover:underline w-full [overflow-wrap:anywhere]" disabled={busy} onClick={()=>selectSession(session)} aria-pressed={open?.id===session.id}>
+       <bdi>{formatLessonTime(session.starts_at,session.local_timezone||workplaceTimezones[session.workplace_id]||timezone)}</bdi>{" · "}<bdi dir="auto">{session.title}</bdi>
+      </button>
+      <div className="text-foreground [overflow-wrap:anywhere]">{session.participants.map(p=>p.name).join(", ")}</div>
+      <div className="text-muted">{t("minuteShort",{count:session.duration_minutes})} · {session.status==="cancelled"?t("cancelled"):session.status==="completed"?t("completed"):session.status==="scheduled"?t("scheduled"):words.unknownStatus}</div>
+      <div className="ccp-calendar-row-actions flex flex-wrap gap-2 text-sm">
        <button id={"lesson-attendance-"+session.id} disabled={busy} className="text-primary hover:underline"
         onClick={()=>openSession(session,"attendance")}>{t("attendance")}</button>
        <button id={"lesson-notes-"+session.id} disabled={busy} className="text-primary hover:underline"
@@ -348,22 +458,26 @@ export function CanonicalScheduleBoard({
       </div>
      </div>)}
    </div>)}
+  {calendarStatus==="ready"&&!sessions.length&&!events.length&&<p className="p-3" role="status">{words.empty}</p>}
   </div>
-  {open&&<div role="dialog" aria-modal="true" aria-label={t("teachingSessionDetails")}
-    className="rounded-xl border border-border bg-surface p-5 space-y-4">
+  {open&&<div ref={detailRef} tabIndex={-1} role="dialog" aria-label={t("teachingSessionDetails")}
+    className="ccp-calendar-detail min-w-0 border border-border bg-surface p-4 space-y-4">
    <div className="flex justify-between gap-2">
     <div>
-     <h2 className="font-semibold break-all">{open.title}</h2>
+     <h2 className="font-semibold [overflow-wrap:anywhere]"><bdi dir="auto">{open.title}</bdi></h2>
      <p className="text-sm text-muted">{new Intl.DateTimeFormat(uiLocale,{timeZone:open.local_timezone||workplaceTimezones[open.workplace_id]||timezone,dateStyle:"full"}).format(new Date(open.starts_at))} · {formatLessonTime(open.starts_at,open.local_timezone||workplaceTimezones[open.workplace_id]||timezone)}</p>
     </div>
-    <button className="text-primary hover:underline text-sm" onClick={()=>setOpen(null)}>{t("close")}</button>
+    <button className="text-primary hover:underline text-sm" disabled={busy} onClick={closeDetail}>{t("close")}</button>
    </div>
-   <div className="flex gap-3 border-b border-border">
-    {(["attendance","notes","schedule"] as const).map(x=><button key={x}
-      className={"pb-2 capitalize text-sm "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
+   <div className="flex flex-wrap gap-3 border-b border-border">
+    <button disabled={busy} aria-pressed={tab==="overview"} className={"pb-2 "+(tab==="overview"?"border-b-2 border-primary text-primary":"text-muted")}
+      onClick={()=>selectSession(sessions.find(row=>row.id===open.id)??open)}>{words.overview}</button>
+    {(["attendance","notes","schedule"] as const).map(x=><button key={x} disabled={busy} aria-pressed={tab===x}
+      className={"pb-2 "+(tab===x?"border-b-2 border-primary text-primary":"text-muted")}
       onClick={()=>openSession(open,x)}>{t(x)}</button>)}
    </div>
-   {tab!=="schedule"&&<label className="block text-sm">{t("frozenParticipant")}
+   {busy&&<p role="status">{words.loading}</p>}
+   {tab!=="schedule"&&tab!=="overview"&&<label className="block text-sm">{t("frozenParticipant")}
     <select className={field} value={selectedStudent} onChange={e=>{
      if(tab==="notes")loadNote(e.target.value,notes);
      else loadDecision(e.target.value,register);
@@ -371,7 +485,28 @@ export function CanonicalScheduleBoard({
      {open.participants.map(p=><option key={p.studentId} value={p.studentId}>{p.name}</option>)}
     </select>
    </label>}
-   {tab==="attendance"?<div className="space-y-3">
+   {tab==="overview"?<div className="space-y-5">
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
+     <p className="font-semibold">{open.status==="scheduled"?t("scheduled"):open.status==="completed"?t("completed"):open.status==="cancelled"?t("cancelled"):words.unknownStatus}</p>
+     <p>{t("minutes",{count:open.duration_minutes})}</p>
+    </div>
+    <div>
+     <p className="font-medium"><bdi dir="auto">{workplaceNames[open.workplace_id]??words.workplaceUnavailable}</bdi></p>
+     <p className="text-muted"><bdi>{open.local_timezone||workplaceTimezones[open.workplace_id]||timezone}</bdi></p>
+     {open.is_home_visit&&<p>{t("homeVisit")}</p>}
+    </div>
+    <section className="space-y-2">
+     <h3 className="font-semibold">{words.participants} <span className="text-muted">{open.participants.length}</span></h3>
+     <ul className="divide-y divide-border">
+      {open.participants.map(p=><li key={p.studentId} className="flex flex-wrap gap-2 justify-between py-3">
+       <Link className="font-medium text-primary hover:underline" href={"/students/"+p.studentId}><bdi dir="auto">{p.name}</bdi></Link>
+       <span className="text-muted">{p.attendanceStatus===null||p.attendanceStatus==="unmarked"?t("unmarked"):
+        Object.prototype.hasOwnProperty.call(DECISIONS,p.attendanceStatus)?t(p.attendanceStatus as Decision):words.unknownStatus}</span>
+      </li>)}
+     </ul>
+    </section>
+    {open.status==="scheduled"&&Date.parse(open.starts_at)>=Date.parse(nowIso)&&<Link className="text-primary underline" href={"/dashboard?prepareSession="+open.id+"#lesson-preparation"}>{words.prepare}</Link>}
+   </div>:tab==="attendance"?<div className="space-y-3">
     <label className="block text-sm">{t("decision")}
      <select className={field} value={draftStatus??""}
       onChange={e=>{setDraftStatus((e.target.value||null) as Decision|null);setNotifyFamily(false)}}>
@@ -477,5 +612,6 @@ export function CanonicalScheduleBoard({
     </div>
    </div>}
   </div>}
+ </div>
  </div>;
 }

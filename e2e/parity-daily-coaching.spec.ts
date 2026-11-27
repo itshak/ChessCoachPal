@@ -5,8 +5,8 @@ import {delegatedTool} from "./helpers/delegated-mcp";
 import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlements";
 import {planCanonicalOccurrences,type CanonicalSlot} from "../lib/server/canonical-calendar-service";
 
-test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
-  test.setTimeout(120_000);
+test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
+  test.setTimeout(180_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const options={auth:{persistSession:false,autoRefreshToken:false}};
   const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,options);
@@ -49,7 +49,7 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
       teacher_id,workplace_id:a,group_id:group,title:prefix+title,starts_at,duration_minutes:45,
       status:"scheduled",local_timezone:"UTC",...opts,
     });
-    await lesson("before midnight",date+"T04:00:00Z");
+    const earliest=await lesson("before midnight",date+"T04:00:00Z");
     const first=await lesson("first local instant",date+"T05:00:00Z");
     const middle1=await lesson("first morning",date+"T09:00:00Z");
     const middle2=await lesson("second morning",date+"T10:00:00Z");
@@ -67,6 +67,11 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     expect((await tool("ccp_workplace_context_set",{
       selectedWorkplaceId:a,expectedSelectedWorkplaceId:null,confirmed:true,
     })).error).toBeUndefined();
+    // Prove the exact next read does not depend on the descending 100-row
+    // discovery cap or the first six future records of arbitrary status.
+    const earlyCancelled=Array.from({length:7},(_,i)=>({teacher_id,workplace_id:a,group_id:group,title:prefix+"earlier cancelled "+i,local_timezone:zone,duration_minutes:20,status:"cancelled",starts_at:new Date(Date.parse(date+"T04:00:00Z")-(i+1)*86400000).toISOString()}));
+    const laterScheduled=Array.from({length:101},(_,i)=>({teacher_id,workplace_id:a,group_id:group,title:prefix+"later "+i,local_timezone:zone,duration_minutes:20,status:"scheduled",starts_at:new Date(Date.parse(date+"T04:00:00Z")+(i+50)*86400000).toISOString()}));
+    expect((await admin.from("teaching_sessions").insert([...earlyCancelled,...laterScheduled])).error).toBeNull();
     const api="/api/dashboard/summary";
     const read=async(query:string,args:Record<string,unknown>)=>{
       const response=await page.request.get(api+query);
@@ -82,6 +87,7 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     ]);
     const web=await read("?date="+date,{date});
     expect(web.daily).toMatchObject({date,timeZone:zone,limit:24,truncated:false});
+    expect(web.nextScheduled).toMatchObject({status:"ready",lesson:{id:earliest,workplace_id:a}});
     expect(ids(web)).toEqual([first,middle1,middle2,last]);
     for(const result of web.daily.sessions){
       expect(Object.keys(result).sort()).toEqual(["duration_minutes","id","starts_at","title","workplace_id"]);
@@ -92,7 +98,9 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     expect(ids(all)).toContain(other);
     expect(ids(all)).not.toContain(last);
     expect(ids(all)).not.toContain(foreignId);
-    expect(ids(await read("?workplaceId="+b+"&date="+date,{workplaceId:b,date}))).toEqual([other]);
+    const otherScope=await read("?workplaceId="+b+"&date="+date,{workplaceId:b,date});
+    expect(ids(otherScope)).toEqual([other]);
+    expect(otherScope.nextScheduled).toMatchObject({status:"ready",lesson:{id:other}});
     const fmt=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"});
     const oldDate=fmt.format(new Date(oldInstant));
     expect(ids(await read("?date="+oldDate,{date:oldDate}))).not.toContain(old);
@@ -105,6 +113,22 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     await page.goto("/dashboard");
     const queue=page.getByRole("region",{name:"Coaching today"});
     await expect(queue.getByLabel("Coaching date")).toHaveValue(fmt.format(new Date()));
+    const agenda=page.locator("[data-home-agenda]");
+    await expect(agenda.locator('[data-next-lesson="true"]')).toContainText(prefix+"before midnight");
+    await expect(agenda.getByText("Next lesson",{exact:true})).toBeVisible();
+    await expect(agenda.locator("[data-agenda-date]")).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"canceled",{exact:true})).toHaveCount(0);
+    await expect(agenda.getByText(prefix+"other school",{exact:true})).toHaveCount(0);
+    await page.screenshot({path:testInfo.outputPath("adaptive-home-desktop.png"),fullPage:true});
+    const homeViewport=page.viewportSize();
+    await page.setViewportSize({width:390,height:844});
+    await agenda.getByRole("link",{name:"Prepare "+prefix+"before midnight"}).click();
+    await expect(page.locator(".ccp-home-workspace .ccp-inspector")).toBeVisible();
+    await expect(queue).toBeHidden();
+    await page.screenshot({path:testInfo.outputPath("adaptive-home-mobile-detail.png"),fullPage:true});
+    await page.getByRole("button",{name:"Back",exact:true}).click();
+    await expect(queue).toBeVisible();
+    if(homeViewport)await page.setViewportSize(homeViewport);
     await queue.getByLabel("Coaching date").fill(date);
     await queue.getByRole("button",{name:"Show lessons"}).click();
     await expect(page).toHaveURL(new RegExp("date="+date));
@@ -143,6 +167,65 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request})=>{
     expect(ids(await read("?date="+date,{date}))).toEqual([first,middle1,middle2,occurrence.data!.id,last]);
     expect((await signed.from("teaching_sessions").select("id").eq("slot_id",slotId)).data)
       .toEqual([{id:occurrence.data!.id}]);
+
+    const originalViewport=page.viewportSize();
+    await page.setViewportSize({width:1440,height:900});
+    await page.goto("/schedule?week="+date+"&view=week");
+    const attendanceButton=page.locator("#lesson-attendance-"+occurrence.data!.id);
+    await expect(attendanceButton).toBeVisible();
+    const weekUrl=page.url();
+    const record=page.locator('[data-calendar-session="'+occurrence.data!.id+'"] > button').first();
+    await record.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("link",{name:"Daily schedule pupil",exact:true})).toBeVisible();
+    expect(page.url()).toBe(weekUrl);
+    await page.screenshot({path:testInfo.outputPath("calendar-desktop.png"),fullPage:true});
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await page.setViewportSize({width:820,height:1100});
+    await page.screenshot({path:testInfo.outputPath("calendar-tablet.png"),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.goto("/schedule?week="+date);
+    const list=page.locator('.ccp-calendar-list[data-view="auto"]');
+    await expect(list).toBeVisible();
+    const mobileUrl=page.url();
+    await record.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await expect(page).toHaveURL(new RegExp("#calendar-detail-"+occurrence.data!.id+"$"));
+    await page.screenshot({path:testInfo.outputPath("calendar-mobile-detail.png"),fullPage:true});
+    await page.goBack();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(mobileUrl);
+    await expect(record).toBeFocused();
+    await page.goForward();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(mobileUrl);
+    await page.getByRole("navigation",{name:"Calendar view"}).getByRole("link",{name:"Month",exact:true}).click();
+    await expect(page).toHaveURL(/view=month/);
+    await page.locator('[data-calendar-date="'+date+'"] > a').first().click();
+    await expect(page).toHaveURL(/view=day/);
+    await expect(attendanceButton).toBeVisible();
+    for(const [locale,heading,month] of [["he","בית","חודש"],["ru","Главная","Месяц"]]){
+      expect((await tool("ccp_teacher_profile_update",{preferredLocale:locale,confirmed:true})).error).toBeUndefined();
+      await page.goto("/dashboard");
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      if(locale==="he")await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+      await expect(page.getByRole("heading",{name:heading,exact:true})).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("adaptive-home-"+locale+"-mobile.png"),fullPage:true});
+      await page.goto("/schedule?week="+date);
+      await expect(page.getByRole("link",{name:month,exact:true})).toBeVisible();
+      await record.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("calendar-"+locale+"-mobile.png"),fullPage:true});
+    }
+    expect((await tool("ccp_teacher_profile_update",{preferredLocale:"en",confirmed:true})).error).toBeUndefined();
+    if(originalViewport)await page.setViewportSize(originalViewport);
 
     const movedId=await lesson("moved actual",tomorrow+"T12:00:00Z",{group_id:null,student_id:pupil});
     const revision=await signed.from("teaching_sessions").select("updated_at").eq("id",movedId).single();

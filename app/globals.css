@@ -13,34 +13,34 @@
   }
 }
 
-/*
- * Brand system: midnight, ivory, teal and gold.
- * Default site theme is dark; teacher accounts may explicitly choose light.
- * Core hues match the approved knight–pupil–book SVG in public/icon/.
- */
+/* Graphite / Iris / Champagne. Semantic roles, not page-specific colors. */
 @theme {
-  --color-background: #0B1322;
-  --color-foreground: #F8F2E8;
-
-  --color-primary: #23B7AB;
-  --color-primary-light: #50DDCD;
-  --color-primary-dark: #0A6F69;
-
-  --color-success: #65BBA8;
-  --color-success-light: #A8DCCB;
-  --color-error: #E9897C;
-  --color-error-light: #F2B9B0;
-  --color-warning: #F0BF63;
-  --color-accent: #E6B447;
-
-  --color-surface: #0D1829;
-  --color-surface-dim: #11293A;
-  --color-skeleton: #1B3242;
-  --color-border: #2E4854;
-  --color-muted: #A5B2B8;
-
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --color-background: #1C1D23;
+  --color-foreground: #F1F2F8;
+  --color-primary: #B3A9E8;
+  --color-primary-light: #C9C1F5;
+  --color-primary-dark: #A299D7;
+  --color-on-primary: #1C1D23;
+  --color-success: #9CC9AC;
+  --color-success-light: #C3E0CE;
+  --color-on-success: #1C1D23;
+  --color-on-success-light: #1C1D23;
+  --color-error: #F0A49A;
+  --color-error-light: #F5C8C2;
+  --color-on-error: #1C1D23;
+  --color-warning: #DAB77A;
+  --color-on-warning: #1C1D23;
+  --color-accent: #CDB58D;
+  --color-surface: #272932;
+  --color-surface-dim: #32343F;
+  --color-skeleton: #363844;
+  --color-border: #7A7E91;
+  --color-border-subtle: #686C80;
+  --color-muted: #BBC0D0;
+}
+@theme inline {
+  --font-sans: var(--font-inter), var(--font-hebrew), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-inter), var(--font-hebrew), ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -56,24 +56,28 @@ body {
 /* Only the teacher workspace can be switched to light mode. */
 [data-teacher-theme="light"] {
   color-scheme: light;
-  --color-background: #F8F2E8;
-  --color-foreground: #0B1322;
-  --color-primary: #0A6F69;
-  --color-primary-light: #23B7AB;
-  --color-primary-dark: #064449;
-
-  --color-success: #287E67;
-  --color-success-light: #D7EFE3;
-  --color-error: #B84F4F;
+  --color-background: #F4F2F9;
+  --color-foreground: #292638;
+  --color-primary: #58418F;
+  --color-primary-light: #6B55A1;
+  --color-primary-dark: #453272;
+  --color-on-primary: #FFFFFF;
+  --color-success: #306A49;
+  --color-success-light: #D9EBDD;
+  --color-on-success: #FFFFFF;
+  --color-on-success-light: #1C1D23;
+  --color-error: #A43C45;
   --color-error-light: #FBE2DF;
-  --color-warning: #A3761B;
-  --color-accent: #A6741B;
-
+  --color-on-error: #FFFFFF;
+  --color-warning: #805A25;
+  --color-on-warning: #FFFFFF;
+  --color-accent: #76572E;
   --color-surface: #FFFFFF;
-  --color-surface-dim: #F2EBE0;
-  --color-skeleton: #E6DED4;
-  --color-border: #D5CABE;
-  --color-muted: #625E58;
+  --color-surface-dim: #EAE6F2;
+  --color-skeleton: #E0DCE9;
+  --color-border: #868098;
+  --color-border-subtle: #868098;
+  --color-muted: #5D586F;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before,
@@ -93,7 +97,7 @@ body {
    Outside + padding keeps bullet and text on one line (TipTap wraps li content in <p>). */
 .ProseMirror ul,
 .ProseMirror ol {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
   margin: 0.35em 0;
   list-style-position: outside;
 }
@@ -122,7 +126,7 @@ body {
 
 .rich-text-html ul,
 .rich-text-html ol {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
   margin: 0.35em 0;
   list-style-position: outside;
 }
@@ -159,3 +163,27 @@ html[lang="ru"] body {
   unicode-bidi: isolate;
 }
 :where([dir="rtl"]) :is([data-user-content], [data-bidi="auto"]) { unicode-bidi: plaintext; }
+
+:root {
+  --ccp-space-1: 4px;
+  --ccp-space-2: 8px;
+  --ccp-space-3: 12px;
+  --ccp-space-4: 16px;
+  --ccp-space-6: 24px;
+  --ccp-space-8: 32px;
+  --ccp-radius: 10px;
+}
+body { font-family: var(--font-inter), var(--font-hebrew), ui-sans-serif, system-ui, sans-serif; --font-nunito: var(--font-inter), var(--font-hebrew); color: var(--color-foreground); }
+html[lang="he"] body { --font-nunito: var(--font-hebrew), var(--font-inter); }
+:where(a,button,input,select,textarea,[tabindex]):focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.bg-primary.text-white { color: var(--color-on-primary); }
+.bg-success.text-white { color: var(--color-on-success); }
+.bg-error.text-white { color: var(--color-on-error); }
+.bg-warning.text-foreground { color: var(--color-on-warning); }
+.ccp-brand-mark { display:inline-flex; flex:none; vertical-align:middle; }
+.ccp-brand-mark img { width:100%; height:100%; object-fit:contain; }
+.ccp-brand-mark .ccp-brand-light { display:none; }
+[data-teacher-theme="light"] .ccp-brand-mark .ccp-brand-dark { display:none; }
+[data-teacher-theme="light"] .ccp-brand-mark .ccp-brand-light { display:block; }
+.ccp-wordmark { font-weight:650; letter-spacing:-.035em; color:var(--color-foreground); white-space:nowrap; }
+.ccp-wordmark span { color:var(--color-primary); }

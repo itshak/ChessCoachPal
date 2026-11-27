@@ -46,10 +46,10 @@ export const PWA = {
   shortName: "CoachPal",
   description:
     "AI-first chess teaching assistant for workplaces, class groups, lessons and student attendance.",
-  themeColor: "#0D1829", // default dark surface, matches --color-surface
-  themeColorDark: "#0D1829",
+  themeColor: "#272932", // default dark surface, matches --color-surface
+  themeColorDark: "#272932",
   themeColorLight: "#FFFFFF",
-  backgroundColor: "#0B1322", // default dark background, matches --color-background
+  backgroundColor: "#1C1D23", // default dark background, matches --color-background
   startUrl: "/",
   scope: "/",
 } as const;

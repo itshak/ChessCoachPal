@@ -8,6 +8,7 @@ import { ensureTeacherForAuthUser } from "@/lib/server/ensure-teacher";
 import { teacherWorkplaceContextGet } from "@/lib/server/teacher-workplace-context";
 import { OnboardingTour } from "@/components/teacher/OnboardingTour";
 import { PushOwnership } from "@/components/teacher/PushOwnership";
+import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { TeacherNav } from "@/components/teacher/TeacherNav";
 import { TeacherThemeProvider } from "@/components/teacher/TeacherThemeProvider";
 
@@ -17,6 +18,7 @@ import { TeacherThemeProvider } from "@/components/teacher/TeacherThemeProvider"
 export async function generateViewport() {
   const cookieStore = await cookies();
   return {
+    viewportFit: "cover" as const,
     themeColor: themeColorFor(themeModeFromCookie(cookieStore.get(THEME_COOKIE)?.value)),
   };
 }
@@ -63,15 +65,16 @@ export default async function TeacherLayout({
   return (
     <TeacherThemeProvider>
       <PushOwnership />
-      <TeacherNav
+      <WorkspaceShell utilities={<TeacherNav
         teacherName={teacher?.display_name ?? user.email ?? "Teacher"}
         avatarUrl={teacher?.avatar_url ?? null}
         workplaces={context?.workplaces??[]}
         selectedWorkplaceId={context?.selectedWorkplaceId??null}
         selectionWasStale={context?.selectionWasStale??false}
-      />
+      />}>
+        {children}
+      </WorkspaceShell>
       <OnboardingTour initialShow={showTour} />
-      <main className="max-w-6xl mx-auto px-4 py-6 min-w-0">{children}</main>
     </TeacherThemeProvider>
   );
 }

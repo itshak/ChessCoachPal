@@ -23,6 +23,7 @@ type Props={
 export function StudentChessProfileEditor(props:Props){
  const router=useRouter();
  const t=useTranslations("students"),locale=useLocale();
+ const common=useTranslations("common");
  const [aliases,setAliases]=useState(props.initialAliases.join(", "));
  const [strength,setStrength]=useState(props.initialStrength?.toString()??"");
  const [lichess,setLichess]=useState(props.initialLichessUsername??"");
@@ -33,7 +34,7 @@ export function StudentChessProfileEditor(props:Props){
  const [ratings,setRatings]=useState<Ratings>(props.initialRatings??{});
  const [history,setHistory]=useState<HistoryItem[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
- const field="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground";
+ const field="w-full rounded-lg border border-border bg-background px-3 py-2 min-h-11 text-base text-foreground";
  const rating=(value:string)=>value.trim()?Number(value):null;
  const loadHistory=useCallback(async()=>{
    const res=await fetch(`/api/students/${props.studentId}?chessHistory=true&limit=30`,{
@@ -74,11 +75,18 @@ export function StudentChessProfileEditor(props:Props){
  }
  const show=(v:unknown)=>v==null?"—":typeof v==="string"?v:JSON.stringify(v);
  return <Card padding="sm" className="mb-6">
-   <form onSubmit={save} className="space-y-3">
-     <div>
-       <h2 className="font-semibold">{t("chessProfile")}</h2>
-       <p className="text-xs text-muted">{t("chessProfileCaution")}</p>
+   <div className="space-y-3">
+     <h2 className="text-lg font-semibold">{t("chessProfile")}</h2>
+     <p className="text-sm text-muted">{t("chessProfileCaution")}</p>
+     <div className="grid gap-3 sm:grid-cols-2">
+      <div><p className="text-sm text-muted">{t("lichessUsername")}</p><p className="font-medium break-words"><bdi dir="auto">{props.initialLichessUsername??common("unknown")}</bdi></p></div>
+      <div><p className="text-sm text-muted">{t("chesscomUsername")}</p><p className="font-medium break-words"><bdi dir="auto">{props.initialChesscomUsername??common("unknown")}</bdi></p></div>
      </div>
+     <div><h3 className="font-medium">{t("teachingGoals")}</h3><p className="whitespace-pre-wrap break-words" dir="auto">{props.initialGoals||common("unknown")}</p></div>
+   </div>
+   <details className="mt-4 rounded-lg border border-border p-3">
+     <summary className="cursor-pointer min-h-11 content-center font-semibold text-primary">{common("edit")}{" · "}{t("chessProfile")}</summary>
+     <form onSubmit={save} className="space-y-3 pt-3">
      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
        <label className="text-sm">{t("aliasesProfile")}
          <input className={field} value={aliases} onChange={e=>setAliases(e.target.value)}
@@ -130,6 +138,7 @@ export function StudentChessProfileEditor(props:Props){
      {error&&<p role="alert" className="text-sm text-error">{error}</p>}
      <Button type="submit" disabled={busy}>{busy?t("adding"):t("saveProfile")}</Button>
    </form>
+   </details>
    <div className="mt-4 border-t border-border pt-3">
      <h3 className="text-sm font-semibold mb-2">{t("historyProfile")}</h3>
      {history.length===0?<p className="text-xs text-muted">{t("noHistoryProfile")}</p>:

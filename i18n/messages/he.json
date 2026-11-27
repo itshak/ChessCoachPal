@@ -5,6 +5,14 @@
     "hint": "בחרו את השפה שבה יוצג היישום."
   },
   "nav": {
+    "home": "בית",
+    "capture": "תיעוד",
+    "searchPages": "חיפוש עמודים",
+    "searchNoResults": "לא נמצאו עמודים",
+    "closeSearch": "סגירה",
+    "navigation": "ניווט במרחב העבודה",
+    "mobileNavigation": "ניווט בנייד",
+    "skipToContent": "דילוג לתוכן",
     "today": "היום",
     "students": "תלמידים",
     "lessons": "שיעורים",
@@ -28,7 +36,9 @@
     "workplaceFilter": "הקשר מקום העבודה הפעיל",
     "allWorkplaces": "כל מקומות העבודה",
     "workplaceFilterFallback": "מקום העבודה הקודם אינו זמין. מוצגים כל מקומות העבודה.",
-    "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו"
+    "workplaceFilterFailed": "שינוי מקום העבודה נכשל; רעננו",
+    "showDetails": "הצגת פרטים",
+    "hideDetails": "הסתרת פרטים"
   },
   "dashboard": {
     "dailyCloseOpen": "תיעוד והשלמה של {title}",
@@ -1183,6 +1193,10 @@
     }
   },
   "studentDetail": {
+    "nextLesson": "השיעור המתוכנן הבא",
+    "nextWindow": "מסגרת העבודה הנוכחית · 30 הימים הבאים · שיעורים שנשמרו בלבד",
+    "nextNone": "לא נמצא שיעור מתוכנן בטווח זה.",
+    "nextUnavailable": "לא ניתן לאמת את השיעור הבא בטווח זה.",
     "learnerEvidenceLink": "תיעוד שיעורים וייבוא",
     "student": "תלמיד",
     "back": "תלמידים",
@@ -1465,7 +1479,11 @@
     "createError": "לא ניתן ליצור חומר לימוד",
     "corrected": "תיקון החומר נשמר.",
     "saved": "החומר נשמר בספריית הלמידה לשימוש חוזר.",
-    "saveFailed": "שמירת החומר נכשלה"
+    "saveFailed": "שמירת החומר נכשלה",
+    "selectMaterial": "בחרו חומר להצגת הפרטים שלו.",
+    "materialDetails": "פרטי חומר",
+    "resumeForm": "המשך עריכה",
+    "teachingEvidence": "עדויות הוראה ושיעורי בית"
   },
   "lessonCapture": {
     "currentCaptureReview": "סקירת קליטת השיעור הנוכחית",
@@ -2233,6 +2251,15 @@
     "qrAlt": "קוד QR לתשלום"
   },
   "lessonHistory": {
+    "showPrivate": "הצגת הערות פרטיות של המאמן",
+    "hidePrivate": "הסתרת הערות פרטיות של המאמן",
+    "noteMarked": "סומן לשיתוף עם אנשי קשר מורשים",
+    "noteNotMarked": "לא סומן לשיתוף עם אנשי קשר",
+    "sessionWide": "השיעור כולו",
+    "notesUnavailable": "הערות השיעור אינן זמינות.",
+    "loadedSearch": "חיפוש בשיעורים שנטענו",
+    "loadedFilter": "הסינון חל על הרשומות שנטענו בלבד; הסיכומים מתייחסים לכל טווח התאריכים.",
+    "showAll": "כל המצבים",
     "workplacesUnavailable": "רשימת מקומות העבודה אינה זמינה",
     "invalidRange": "תאריך הסיום מוקדם מתאריך ההתחלה",
     "loadError": "לא ניתן לטעון את היסטוריית ההוראה",
@@ -2556,6 +2583,9 @@
     }
   },
   "lessonCompletion": {
+    "draftRestored": "טיוטת הנוכחות וההערה שוחזרה. יש לבדוק שוב לפני השמירה.",
+    "draftChanged": "רשימת המשתתפים או הנוכחות השתנתה. הטיוטה הקודמת לא הוחלה.",
+    "draftLocal": "שינויים שלא נשמרו נשארים בסביבת העבודה בעת מעבר בין שיעורים. יש לבדוק שוב לפני השמירה.",
     "combinedHeading": "חומר שנלמד (לא חובה)",
     "combinedUseMaterial": "שמירת חומר שנלמד יחד עם השיעור",
     "combinedSearchLabel": "חיפוש חומרי לימוד פעילים לפי כותרת",
