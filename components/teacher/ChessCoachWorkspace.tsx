@@ -107,6 +107,8 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [lessonNote, setLessonNote] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [sessionQuery,setSessionQuery]=useState("");
+  const historyText=useTranslations("lessonHistory");
   const [editSessionTitle, setEditSessionTitle] = useState("");
   const [editStart, setEditStart] = useState("");
   const [editDuration, setEditDuration] = useState(60);
@@ -412,6 +414,7 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
 
   const localGroups = groups.filter(g => g.workplace_id === workplaceId);
   const localSessions = sessions.filter(s => s.workplace_id === workplaceId);
+  const displayedSessions=localSessions.filter(item=>item.title.toLocaleLowerCase(lang).includes(sessionQuery.trim().toLocaleLowerCase(lang)));
   const session = localSessions.find(s => s.id === selectedSessionId);
   const [openedAt]=useState(()=>Date.now());
   const historicalArchivedSession=Boolean(session?.studentArchived===true&&Date.parse(session.starts_at)<openedAt);
@@ -476,11 +479,14 @@ export function ChessCoachWorkspace({initialWorkplaceId}:{initialWorkplaceId?:st
       <p className="text-sm text-muted">{t("instructorTime",{count:teacherMinutes})}</p>
       <section className={panel} aria-labelledby="coaching-session-timeline">
         <h2 id="coaching-session-timeline" className="text-lg font-semibold">{t("sessionTimeline")}</h2>
-        {localSessions.length ? (
+        <label className="block text-sm">{historyText("loadedSearch")}
+          <input type="search" dir="auto" value={sessionQuery} onChange={e=>setSessionQuery(e.target.value)} className={field}/>
+        </label>
+        {displayedSessions.length ? (
           <ol className="space-y-2">
-            {localSessions.map(item => (
+            {displayedSessions.map(item => (
               <li key={item.id}>
-                <button type="button" className="w-full rounded-lg border border-border p-2 text-start text-sm"
+                <button type="button" className="w-full min-h-11 rounded-lg border border-border p-3 text-start text-[15px]"
                   aria-current={selectedSessionId === item.id ? "true" : undefined}
                   onClick={() => setSelectedSessionId(item.id)}>
                   <time dateTime={item.starts_at}>{new Date(item.starts_at).toLocaleString(lang, {
