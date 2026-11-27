@@ -6,7 +6,7 @@ import {configureSyntheticStudentCapacity} from "./helpers/normalized-entitlemen
 import {planCanonicalOccurrences,type CanonicalSlot} from "../lib/server/canonical-calendar-service";
 
 test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const options={auth:{persistSession:false,autoRefreshToken:false}};
   const admin=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,options);
@@ -157,8 +157,11 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     const attendanceButton=page.locator("#lesson-attendance-"+occurrence.data!.id);
     await expect(attendanceButton).toBeVisible();
     const weekUrl=page.url();
-    await attendanceButton.click();
+    const record=page.locator('[data-calendar-session="'+occurrence.data!.id+'"] > button').first();
+    await record.click();
     await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("link",{name:"Daily schedule pupil",exact:true})).toBeVisible();
     expect(page.url()).toBe(weekUrl);
     await page.screenshot({path:testInfo.outputPath("calendar-desktop.png"),fullPage:true});
     await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
@@ -168,18 +171,43 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     await page.goto("/schedule?week="+date);
     const list=page.locator('.ccp-calendar-list[data-view="auto"]');
     await expect(list).toBeVisible();
-    await attendanceButton.click();
+    const mobileUrl=page.url();
+    await record.click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(list).toBeHidden();
+    await expect(page).toHaveURL(new RegExp("#calendar-detail-"+occurrence.data!.id+"$"));
     await page.screenshot({path:testInfo.outputPath("calendar-mobile-detail.png"),fullPage:true});
+    await page.goBack();
+    await expect(list).toBeVisible();
+    await expect(page).toHaveURL(mobileUrl);
+    await expect(record).toBeFocused();
+    await page.goForward();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("dialog").getByText("Recorded participants",{exact:false})).toBeVisible();
     await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
     await expect(list).toBeVisible();
-    await expect(attendanceButton).toBeFocused();
+    await expect(page).toHaveURL(mobileUrl);
     await page.getByRole("navigation",{name:"Calendar view"}).getByRole("link",{name:"Month",exact:true}).click();
     await expect(page).toHaveURL(/view=month/);
     await page.locator('[data-calendar-date="'+date+'"] > a').first().click();
     await expect(page).toHaveURL(/view=day/);
     await expect(attendanceButton).toBeVisible();
+    for(const [locale,heading,month] of [["he","בית","חודש"],["ru","Главная","Месяц"]]){
+      expect((await tool("ccp_teacher_profile_update",{preferredLocale:locale,confirmed:true})).error).toBeUndefined();
+      await page.goto("/dashboard");
+      await expect(page.locator("html")).toHaveAttribute("lang",locale);
+      if(locale==="he")await expect(page.locator("html")).toHaveAttribute("dir","rtl");
+      await expect(page.getByRole("heading",{name:heading,exact:true})).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("adaptive-home-"+locale+"-mobile.png"),fullPage:true});
+      await page.goto("/schedule?week="+date);
+      await expect(page.getByRole("link",{name:month,exact:true})).toBeVisible();
+      await record.click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.screenshot({path:testInfo.outputPath("calendar-"+locale+"-mobile.png"),fullPage:true});
+    }
+    expect((await tool("ccp_teacher_profile_update",{preferredLocale:"en",confirmed:true})).error).toBeUndefined();
     if(originalViewport)await page.setViewportSize(originalViewport);
 
     const movedId=await lesson("moved actual",tomorrow+"T12:00:00Z",{group_id:null,student_id:pupil});
