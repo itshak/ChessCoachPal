@@ -16,7 +16,7 @@ export type TestMcpReply = {data?:TestMcpData;error?:{code:string;message:string
  * real OAuth PKCE MCP client. These are individual acceptance evidence tests,
  * not synthetic list-of-tool-name assertions.
  */
-export async function delegatedTool(page: Page, request: APIRequestContext, scope = "coach:read coach:write", credentials?:{email:string;password:string}) {
+export async function delegatedTool(page: Page, request: APIRequestContext, scope = "coach:read coach:write", credentials?:{email:string;password:string}, consentName?:string) {
   const origin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000").origin;
   const callback = origin + "/oauth/synthetic-callback";
   const verifier = "p".repeat(64);
@@ -40,7 +40,8 @@ export async function delegatedTool(page: Page, request: APIRequestContext, scop
     state:"parity-"+randomUUID(),scope,
   });
   await page.goto("/oauth/authorize?"+qs.toString());
-  await page.getByRole("button",{name:"Authorize"}).click();
+  if(consentName) await page.getByRole("button",{name:consentName,exact:true}).click({timeout:10000});
+  else await page.getByRole("button",{name:"Authorize"}).click();
   await page.waitForURL(u=>u.pathname==="/oauth/synthetic-callback" && u.searchParams.has("code"),
     {waitUntil:"commit",timeout:20000});
   const authCode=new URL(page.url()).searchParams.get("code");
