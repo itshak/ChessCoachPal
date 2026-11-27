@@ -39,6 +39,7 @@ export function UnifiedLessonHistoryPanel({fixedStudentId,initialWorkplaceId}:{f
  const needle=query.trim().toLocaleLowerCase(locale);
  const visibleRows=rows.filter(row=>(!statusFilter||row.status===statusFilter)&&(!needle||[rowLabel(row),rowDate(row),workplaceName(row.workplaceId),statusText(row.status)].join(" ").toLocaleLowerCase(locale).includes(needle)));
  const [error,setError]=useState("");
+ function clearHistory(){setResult(null);setRows([]);setNextOffset(null);setError("");}
  useEffect(()=>{setWorkplaceId(initialWorkplaceId??"");setResult(null);setRows([]);setNextOffset(null);},[initialWorkplaceId]);
  useEffect(()=>{
   let active=true;
@@ -69,10 +70,10 @@ export function UnifiedLessonHistoryPanel({fixedStudentId,initialWorkplaceId}:{f
   <h2 className="text-lg font-semibold">{t("title")}</h2>
   <p className="text-sm text-muted">{t("description")}</p>
   <form onSubmit={submit} className="flex flex-wrap gap-3 items-end">
-   <label className="block min-w-0 w-full text-sm sm:w-auto">{t("from")} <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={"block "+classes} required/></label>
-   <label className="block min-w-0 w-full text-sm sm:w-auto">{t("to")} <input type="date" value={to} onChange={e=>setTo(e.target.value)} className={"block "+classes} required/></label>
+   <label className="block min-w-0 w-full text-sm sm:w-auto">{t("from")} <input type="date" value={from} disabled={busy} onChange={e=>{setFrom(e.target.value);clearHistory();}} className={"block "+classes} required/></label>
+   <label className="block min-w-0 w-full text-sm sm:w-auto">{t("to")} <input type="date" value={to} disabled={busy} onChange={e=>{setTo(e.target.value);clearHistory();}} className={"block "+classes} required/></label>
    <label className="block min-w-0 w-full text-sm sm:w-auto">{t("workplace")}
-    <select data-testid="history-workplace-select" value={workplaceId} onChange={e=>setWorkplaceId(e.target.value)} className={"block "+classes}>
+    <select data-testid="history-workplace-select" value={workplaceId} disabled={busy} onChange={e=>{setWorkplaceId(e.target.value);clearHistory();}} className={"block "+classes}>
      <option value="">{t("allWorkplaces")}</option>
      {workplaces.map(w=><option value={w.id} key={w.id}>{w.name}</option>)}
     </select>
