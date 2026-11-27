@@ -1,0 +1,28 @@
+/* Page-owned layout only: all colors follow the production shell tokens. */
+.ccp-calendar-workspace {display:grid;gap:1rem;min-width:0;align-items:start}
+.ccp-calendar-list {display:grid;grid-template-columns:minmax(0,1fr);gap:.25rem;min-width:0}
+.ccp-calendar-list[data-view="agenda"] .ccp-calendar-day[data-empty="true"] {display:none}
+.ccp-calendar-mobile-count {display:none}
+.ccp-calendar-detail {min-width:0;overflow-wrap:anywhere}
+.ccp-calendar-record button {min-height:2rem}
+.ccp-calendar-list [aria-pressed="true"] {text-decoration:underline;text-underline-offset:.2em}
+.ccp-calendar-list[data-view="month"] {grid-template-columns:repeat(7,minmax(0,1fr))}
+.ccp-calendar-list[data-view="month"] > .ccp-calendar-day {border:1px solid var(--border);min-height:5rem}
+.ccp-calendar-list > [role="status"] {grid-column:1/-1}
+@media(min-width:800px){
+ .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) {grid-template-columns:repeat(7,minmax(0,1fr))}
+ .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) .ccp-calendar-day {min-height:8rem}
+}
+@media(min-width:1200px){
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-workspace {grid-template-columns:minmax(0,1fr) minmax(18rem,24rem)}
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-list:is([data-view="auto"],[data-view="week"]) {grid-template-columns:minmax(0,1fr)}
+ .ccp-calendar-detail {position:sticky;top:1rem}
+}
+@media(max-width:799px){
+ .ccp-calendar-list[data-view="auto"] .ccp-calendar-day[data-empty="true"] {display:none}
+ .ccp-calendar-list[data-view="month"] .ccp-calendar-day {min-height:3.5rem;padding:.25rem;overflow-wrap:anywhere}
+ .ccp-calendar-list[data-view="month"] .ccp-calendar-day > :not(:first-child):not(.ccp-calendar-mobile-count) {display:none}
+ .ccp-calendar-list[data-view="month"] .ccp-calendar-mobile-count {display:block;font-variant-numeric:tabular-nums}
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-controls,
+ .ccp-calendar[data-detail-open="true"] .ccp-calendar-list {display:none}
+}
