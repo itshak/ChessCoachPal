@@ -32,6 +32,7 @@ import {loadCanonicalCreditBalances} from "@/lib/server/canonical-credits";
 import {withCreditFundingReport} from "@/lib/server/credit-package-funding";
 import { oneToOne, toLocalDateString } from "@/lib/schedule";
 import {StudentDirectory} from "../StudentDirectory";
+import {RouteMasterDetail} from "@/components/ui/workspace-layout";
 import {NextStudentLesson} from "./NextStudentLesson";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -127,11 +128,10 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const history=await getTranslations("lessonHistory");
 
   return (
-    <div className="grid min-w-0 gap-6 min-[800px]:grid-cols-[minmax(13rem,1fr)_minmax(0,2.3fr)]">
-      <aside className="hidden min-w-0 min-[800px]:block min-[800px]:self-start min-[800px]:sticky min-[800px]:top-24 min-[800px]:max-h-[80vh] min-[800px]:overflow-y-auto" aria-label={st("title")}>
-        <StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>
-      </aside>
-      <article className="min-w-0 text-base leading-relaxed">
+    <div className="ccp-student-workspace">
+      <RouteMasterDetail key={id} masterLabel={st("title")} detailLabel={st("profile")} mobileDetail={true} backHref={backHref} showMobileBack={false}
+      master={<StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>}
+      detail={<article className="min-w-0 text-base leading-relaxed">
       <Link href={backHref} className="inline-flex min-h-11 items-center gap-2 mb-3 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
       <header className="border-b border-border pb-5 mb-5">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
@@ -236,7 +236,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
         <SkillsPanel studentId={id} dimensions={dimensions} assessments={assessments ?? []} />
       </div>
       <ChessLearningPanel fixedStudentId={id} />
-      </article>
+      </article>}/>
     </div>
   );
 }

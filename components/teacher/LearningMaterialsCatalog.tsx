@@ -40,7 +40,7 @@ export function LearningMaterialsCatalog(){
   const [formOpen,setFormOpen]=useState(false),[detailOpen,setDetailOpen]=useState(true),[mobileDetail,setMobileDetail]=useState(false);
   const [loading,setLoading]=useState(true),[listUnavailable,setListUnavailable]=useState(false);
   const listRequest=useRef(0),origin=useRef<HTMLElement|null>(null);
-  const selected=items.find(item=>item.id===selectedId)??null;
+  const selected=!loading&&!listUnavailable?items.find(item=>item.id===selectedId)??null:null;
   const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
   const [relationSource,setRelationSource]=useState<Material|null>(null);
   const [targetMaterialId,setTargetMaterialId]=useState("");
@@ -48,6 +48,7 @@ export function LearningMaterialsCatalog(){
   const [relationAction,setRelationAction]=useState<"link"|"unlink">("link");
   const [relations,setRelations]=useState<Array<{from_material_id:string;to_material_id:string;relation_type:string}>>([]);
   const [total,setTotal]=useState(0);
+  const [offset,setOffset]=useState(0),[nextOffset,setNextOffset]=useState<number|null>(null);
   const [kind,setKind]=useState<MaterialKind>("game");
   const [title,setTitle]=useState("");
   const [description,setDescription]=useState("");
@@ -78,21 +79,21 @@ export function LearningMaterialsCatalog(){
   const load=useCallback(async()=>{
     const sequence=++listRequest.current;
     setLoading(true);setListUnavailable(false);
-    const params=new URLSearchParams({limit:"100",includeArchived:showArchived?"true":"false"});
+    const params=new URLSearchParams({limit:"100",offset:String(offset),includeArchived:showArchived?"true":"false"});
     if(filter)params.set("kind",filter);
     if(search.trim())params.set("query",search.trim());
     const response=await fetch("/api/training/materials?"+params,{cache:"no-store"});
     if(!response.ok){if(sequence===listRequest.current){setLoading(false);setListUnavailable(true);}throw new Error(t("loadFailed"));}
-    const data=await response.json() as {materials:Material[];total:number};
+    const data=await response.json() as {materials:Material[];total:number;nextOffset:number|null};
     if(sequence!==listRequest.current)return;
-    setItems(data.materials);setTotal(data.total);setLoading(false);
-  },[filter,search,showArchived,t]);
+    setItems(data.materials);setTotal(data.total);setNextOffset(data.nextOffset);setLoading(false);
+  },[filter,search,showArchived,offset,t]);
   useEffect(()=>{let active=true;
     void load().catch(()=>{if(active){setError(t("loadError"));setLoading(false);setListUnavailable(true);}});
     return()=>{active=false;listRequest.current+=1;};
   },[load,t]);
   function reveal(){origin.current=document.activeElement instanceof HTMLElement?document.activeElement:null;setDetailOpen(true);setMobileDetail(true);}
-  function back(){setMobileDetail(false);requestAnimationFrame(()=>origin.current?.focus({preventScroll:true}));}
+  function back(){setMobileDetail(false);requestAnimationFrame(()=>{origin.current?.scrollIntoView({block:"nearest"});origin.current?.focus({preventScroll:true});});}
   function choose(material:Material){if(formOpen||busy||relationSource||archivePreview)return;setSelectedId(material.id);setError("");setStatus("");reveal();}
   function beginEdit(material:Material){
     setFormOpen(true);setDetailOpen(true);setMobileDetail(true);
@@ -115,7 +116,7 @@ export function LearningMaterialsCatalog(){
     setStatus("");setError("");
   }
   async function previewMaterialArchive(material:Material){
-    setArchivePreview(null);setError("");setStatus("");
+    setBusy(true);setArchivePreview(null);setError("");setStatus("");
     try{
       const response=await fetch("/api/training/materials/lifecycle?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
@@ -123,6 +124,7 @@ export function LearningMaterialsCatalog(){
       if(!response.ok)throw new Error(toUserError(data, t("inspectError")));
       setArchivePreview(data);
     }catch(e){setError(toUserError(e, t("archiveUnavailable")));}
+    finally{setBusy(false);}
   }
   async function changeMaterialLifecycle(materialId:string,revision:number,action:"archive"|"restore"){
     setBusy(true);setError("");setStatus("");
@@ -140,7 +142,7 @@ export function LearningMaterialsCatalog(){
     finally{setBusy(false);}
   }
   async function selectRelationshipSource(material:Material){
-    setRelationSource(material);setTargetMaterialId("");setError("");setStatus("");
+    setRelationSource(material);setTargetMaterialId("");setRelations([]);setError("");setStatus("");setBusy(true);
     try{
       const response=await fetch("/api/training/materials/relations?"+
         new URLSearchParams({materialId:material.id}),{cache:"no-store"});
@@ -148,6 +150,7 @@ export function LearningMaterialsCatalog(){
       if(!response.ok)throw new Error(toUserError(data, t("fetchRelations")));
       setRelations(data.relations??[]);
     }catch(e){setError(toUserError(e, t("fetchRelations")));}
+    finally{setBusy(false);}
   }
   async function changeRelation(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
@@ -198,6 +201,7 @@ export function LearningMaterialsCatalog(){
     }catch(e){setError(toUserError(e, t("saveFailed")));}
     finally{setBusy(false);}
   }
+  const reviewOpen=Boolean(formOpen||relationSource||archivePreview||busy);
   const detail=<div className="space-y-4 ccp-material-detail">
     {archivePreview&&<div className="rounded-xl border border-border p-4 space-y-2" aria-label={t("archiveAria")}>
       <h3 className="font-semibold">{t("archivePreview",{name:archivePreview.title})}</h3>
@@ -325,11 +329,11 @@ export function LearningMaterialsCatalog(){
       {(()=>{const material=selected;return <>
         <RecordTitle title={<bdi dir="auto">{material.title}</bdi>} subtitle={labels[material.kind]}/>
         <ContextActions>
-        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" onClick={()=>beginEdit(material)} aria-label={t("correctAria",{name:material.title})}>{t("correctButton")}</button>
-        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" onClick={()=>{void selectRelationshipSource(material);}} aria-label={t("linkAria",{name:material.title})}>{t("relationsButton")}</button>
+        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" disabled={busy} onClick={()=>beginEdit(material)} aria-label={t("correctAria",{name:material.title})}>{t("correctButton")}</button>
+        <button className="rounded border border-border px-3 py-2 min-h-11 text-sm" type="button" disabled={busy} onClick={()=>{void selectRelationshipSource(material);}} aria-label={t("linkAria",{name:material.title})}>{t("relationsButton")}</button>
         {material.archived_at
-          ?<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={t("restoreAria",{name:material.title})}>{t("restoreButton")}</button>
-          :<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" onClick={()=>{void previewMaterialArchive(material);}} aria-label={t("archiveButtonAria",{name:material.title})}>{t("archiveButton")}</button>}
+          ?<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" disabled={busy} onClick={()=>{void changeMaterialLifecycle(material.id,material.revision,"restore");}} aria-label={t("restoreAria",{name:material.title})}>{t("restoreButton")}</button>
+          :<button type="button" className="rounded border border-border px-3 py-2 min-h-11 text-sm" disabled={busy} onClick={()=>{void previewMaterialArchive(material);}} aria-label={t("archiveButtonAria",{name:material.title})}>{t("archiveButton")}</button>}
         </ContextActions>
         {material.description&&<RecordProse>{material.description}</RecordProse>}
         {material.chess_games&&<p className="text-xs text-muted"><bdi dir="auto">{material.chess_games.white_player}</bdi>
@@ -349,19 +353,20 @@ export function LearningMaterialsCatalog(){
   const master=<div className="space-y-3">
     <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">{t("title")}</h2><button type="button" className={button} disabled={busy} onClick={()=>{if(!relationSource&&!archivePreview)setFormOpen(true);reveal();}}>{formOpen||relationSource||archivePreview?t("resumeForm"):t("addMaterial")}</button></div>
       <div className="flex gap-2 flex-wrap">
-        <input className={field+" sm:max-w-xs"} aria-label={t("searchAria")} value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("searchHint")}/>
-        <select className={field+" sm:max-w-xs"} aria-label={t("filterAria")} value={filter} onChange={e=>setFilter(e.target.value as MaterialKind|"")}>
+        <input className={field+" sm:max-w-xs"} aria-label={t("searchAria")} value={search} maxLength={120} disabled={reviewOpen} onChange={e=>{setOffset(0);setSearch(e.target.value);}} placeholder={t("searchHint")}/>
+        <select className={field+" sm:max-w-xs"} aria-label={t("filterAria")} value={filter} disabled={reviewOpen} onChange={e=>{setOffset(0);setFilter(e.target.value as MaterialKind|"");}}>
           <option value="">{t("allTypes")}</option>{kinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}
         </select>
       </div>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>{t("includeArchived")}
+        <input type="checkbox" checked={showArchived} disabled={reviewOpen} onChange={e=>{setOffset(0);setShowArchived(e.target.checked);}}/>{t("includeArchived")}
       </label>
       <p className="text-sm text-muted">{t("showing",{shown:items.length,total})}</p>
     {loading&&<p role="status">{common("loading")}</p>}
     {!loading&&listUnavailable&&<p role="alert">{t("loadError")}</p>}
     {!loading&&!listUnavailable&&!items.length&&<p>{common("noResults")}</p>}
-    {!listUnavailable&&items.map(material=><div key={material.id} data-material-id={material.id} className="min-w-0"><RecordRow title={<bdi dir="auto">{material.title}</bdi>} description={labels[material.kind]} selected={selectedId===material.id} onSelect={()=>choose(material)}/></div>)}
+    {!loading&&!listUnavailable&&items.map(material=><div key={material.id} data-material-id={material.id} className="min-w-0"><RecordRow title={<bdi dir="auto">{material.title}</bdi>} description={labels[material.kind]} selected={selectedId===material.id} disabled={reviewOpen||loading} onSelect={()=>choose(material)}/></div>)}
+    {!listUnavailable&&!loading&&(offset>0||nextOffset!==null)&&<nav aria-label={t("title")} className="flex gap-3"><button type="button" disabled={reviewOpen||offset===0} onClick={()=>{setSelectedId(null);setOffset(Math.max(0,offset-100));}} className="ccp-quiet-action disabled:opacity-50">{common("previous")}</button><button type="button" disabled={reviewOpen||nextOffset===null||nextOffset>100000} onClick={()=>{if(nextOffset!==null){setSelectedId(null);setOffset(nextOffset);}}} className="ccp-quiet-action disabled:opacity-50">{common("next")}</button></nav>}
   </div>;
   return <section className="space-y-4 ccp-material-workspace" aria-label={t("aria")}>
     {error&&<p role="alert" className="text-sm text-error">{error}</p>}

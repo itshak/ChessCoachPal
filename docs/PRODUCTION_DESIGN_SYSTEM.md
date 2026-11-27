@@ -20,3 +20,6 @@ Desktop >=1280: persistent logical-start navigation; tablet 800–1279: horizont
 - Semantic contrast unit tests and authenticated shell E2E added; required CI and screenshot inspection must pass on final integrated head.
 - Verify existing navigation selectors/onboarding, workplace persistence, account sign-out, theme, locale, push, PWA, and existing parity tests. Manual optical inspection, keyboard/screen-reader checks and Hebrew/Russian stress at actual widths remain required; no claim of acceptance until observed.
 - No schema, shared service contract, MCP tools, deploy, merge or archive changes. No new business operation; parity guard remains intact.
+
+## Consolidated adoption
+PR #273 adds URL-driven RouteMasterDetail for Home and student profiles, the same MasterDetail for the typed Materials catalog, shared 16px reading prose, and a focused Capture route at /coaching?capture=1. MasterDetail may omit its generic mobile Back control when the record already has a meaningful route link. The desktop inspector can collapse, while mobile explicit selection remains readable. Existing business permissions are unchanged.

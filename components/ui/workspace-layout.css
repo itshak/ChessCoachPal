@@ -28,6 +28,7 @@
 .ccp-status[data-tone=accent]{color:var(--color-accent);}
 .ccp-context-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .ccp-record-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:52px; text-align:start; padding:12px; border-block-end:1px solid var(--color-border-subtle); cursor:pointer; }
+.ccp-record-row:disabled{opacity:.65;cursor:not-allowed;}
 .ccp-record-row[aria-pressed=true]{background:color-mix(in srgb,var(--color-primary) 12%,transparent);}
 .ccp-row-text { display:grid; gap:3px; min-width:0; overflow-wrap:anywhere; }
 .ccp-row-meta { flex:none; font-variant-numeric:tabular-nums; }
@@ -60,3 +61,5 @@
 .ccp-material-board span[data-white=true]{color:#F1F2F8;text-shadow:0 0 1px #1C1D23,0 1px 1px #1C1D23;}
 .ccp-material-detail{font-size:16px;line-height:1.6;}
 @media(min-width:800px){.ccp-material-workspace .ccp-master-detail[data-open=true]{grid-template-columns:minmax(0,1fr) minmax(280px,48%);}}
+
+@media(min-width:800px){.ccp-student-workspace .ccp-master-detail[data-open=true]{grid-template-columns:minmax(13rem,1fr) minmax(0,2.3fr);}.ccp-student-workspace .ccp-master{align-self:start;position:sticky;top:5rem;max-height:calc(100dvh - 6rem);overflow-y:auto;}.ccp-student-workspace .ccp-master-detail[data-open=false] .ccp-master{position:static;max-height:none;}}
