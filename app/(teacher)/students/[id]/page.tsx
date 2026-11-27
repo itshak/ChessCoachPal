@@ -169,13 +169,13 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       </nav>
       <section id="student-learning" className="scroll-mt-4 space-y-4 mb-6">
       {!student.archived_at&&<NextStudentLesson db={supabase} teacherId={user.id} studentId={id} timezone={policy.timezone}/>}
-      <CoachBriefingPanel studentId={id} />
+      <CoachBriefingPanel key={id} studentId={id} />
       <LearnerEvidencePanel evidence={learnerEvidence} />
-      <UnifiedLessonHistoryPanel fixedStudentId={id}/>
+      <UnifiedLessonHistoryPanel key={id} fixedStudentId={id}/>
       <MaterialHistoryPanel fixedStudentId={id}/>
       <StudentTrainingPlansPanel studentId={id} />
-      <StudentLessonNotes notes={lessonNotes} timezone={policy.timezone} />
-      <StudentNotesEditor key={(student.teacher_notes ?? "").length} studentId={id} initialNotes={student.teacher_notes ?? ""}/>
+      <StudentLessonNotes key={id} notes={lessonNotes} timezone={policy.timezone} />
+      <StudentNotesEditor key={id+":"+(student.teacher_notes??"").length} studentId={id} initialNotes={student.teacher_notes ?? ""}/>
       </section>
       <section id="student-ratings" className="scroll-mt-4 space-y-3 mb-6">
       <StudentChessProfileEditor key={id}
