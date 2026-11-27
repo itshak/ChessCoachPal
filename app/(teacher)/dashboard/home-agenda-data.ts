@@ -2,11 +2,11 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {sessionsList,workplacesList} from "@/lib/server/coach-service";
 import {teacherDashboardPageModel,teacherDashboardSummary} from "@/lib/server/teacher-overview-service";
 import {addDays,isDateString} from "@/lib/schedule";
-import {agendaDates,discoverHome,nextWithinVerifiedDays,verifiedHintDates,type AgendaDay} from "./home-agenda";
+import {agendaDates,discoverHome,type AgendaDay} from "./home-agenda";
 
 type Daily=NonNullable<Awaited<ReturnType<typeof teacherDashboardPageModel>>["daily"]>;
 
-export async function loadHomeAgenda(db:SupabaseClient,teacherId:string,workplaceId:string|null,daily:Daily,rawStart:unknown,now:Date,hints:readonly {starts_at:string}[]){
+export async function loadHomeAgenda(db:SupabaseClient,teacherId:string,workplaceId:string|null,daily:Daily,rawStart:unknown,now:Date,nextScheduled:Awaited<ReturnType<typeof teacherDashboardPageModel>>["nextScheduled"]){
  const today=daily.date;
  const start=typeof rawStart==="string"&&isDateString(rawStart)&&rawStart>=today&&rawStart<="9998-12-24"?rawStart:today;
  const [discovery,venues]=await Promise.all([
@@ -27,15 +27,8 @@ export async function loadHomeAgenda(db:SupabaseClient,teacherId:string,workplac
    return {date,status:"unavailable",rows:[]};
   };
   projection.days=await Promise.all(agendaDates(start).map(readDay));
-  // Exact earliest dated candidate can be beyond the seven-day window.
-  // Stop at the first unavailable date; never promote a later hint to "next".
-  const known=new Map(projection.days.map(day=>[day.date,day]));
-  const dates=verifiedHintDates(hints,daily.timeZone,today);
-  const firstDays=await Promise.all(dates.map(date=>known.get(date)??readDay(date)));
-  projection.next=nextWithinVerifiedDays(firstDays);
-  if(!projection.next&&start===today)projection.next=nextWithinVerifiedDays(projection.days);
-  if(!projection.next&&start!==today)projection.next=daily.sessions[0]??null;
+
  }
- return {...projection,start,today,end:addDays(start,6),timeZone:daily.timeZone,workplaceNames};
+ return {...projection,next:nextScheduled.status==="ready"?nextScheduled.lesson:projection.next,nextVerified:nextScheduled.status==="ready"||projection.futureComplete,start,today,end:addDays(start,6),timeZone:daily.timeZone,workplaceNames};
 }
 export type HomeAgendaModel=Awaited<ReturnType<typeof loadHomeAgenda>>;

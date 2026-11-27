@@ -102,12 +102,9 @@ export default async function SchedulePage({
   localDate:formatEventDateKey(event.starts_at,(event.workplace_id&&workplaceTimezones[event.workplace_id])||policy.timezone),
  })).filter(event=>event.localDate>=weekStart&&event.localDate<=weekEnd);
 
- return <main className="space-y-6 ccp-calendar-page">
+ return <div className="space-y-6 ccp-calendar-page">
   <header>
-   <h1 className="font-bold text-2xl">{t("heading")}</h1>
-   <p className="text-muted text-sm mt-1">
-    {t("intro")}
-   </p>
+   <h1 className="font-bold text-2xl ccp-mobile-sr-only">{t("heading")}</h1>
   </header>
   {requestedSession!==undefined&&!noteTarget&&<p role="status">{t("lessonLinkUnavailable")}</p>}
   <CanonicalScheduleBoard
@@ -129,5 +126,5 @@ export default async function SchedulePage({
     </p>
    </div>
   </div>
- </main>;
+ </div>;
 }

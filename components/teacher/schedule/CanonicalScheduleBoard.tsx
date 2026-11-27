@@ -52,6 +52,7 @@ export function CanonicalScheduleBoard({
  sessions:CanonicalCalendarRow[];events:Event[];
  students:Student[];workplaces:Workplace[];durationOptions:number[];
 }){
+ const currentPage="page" as const;
  const router=useRouter(),{showToast}=useToast();
  const t=useTranslations("calendar");
  const toUserError=useLocalizedApiError();
@@ -367,7 +368,7 @@ export function CanonicalScheduleBoard({
    </div>
    <nav aria-label={words.view} className="flex flex-wrap gap-2">
     {(["agenda","week","month","day"] as const).map(mode=><Link key={mode}
-      data-view-choice={mode} aria-current={view===mode?"page":undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
+      data-view-choice={mode} aria-current={view===mode?currentPage:undefined} className={"rounded px-3 py-2 border "+(view===mode?"border-primary text-primary":"border-border")}
       href={calendarHref(anchorDate,mode)}>{words[mode]}</Link>)}
    </nav>
    <form method="get" action="/schedule" className="flex flex-wrap gap-2 items-center">

@@ -92,6 +92,17 @@ async function dashboardSummary(db: Db, teacherId: string, scope: DashboardScope
   };
 }
 
+/** Earliest persisted scheduled occurrence, independent of descending history
+ * pagination and any requested civil date. The limit is one, not a scan cap. */
+async function nextScheduledLesson(db:Db,teacherId:string,scope:DashboardScope){
+  const {data,error}=await db.from("teaching_sessions")
+    .select("id,title,starts_at,duration_minutes,workplace_id")
+    .eq("teacher_id",teacherId).match(workplaceMatch(scope))
+    .eq("status","scheduled").gte("starts_at",scope.now.toISOString())
+    .order("starts_at").order("id").limit(1).maybeSingle();
+  if(error)return {status:"unavailable" as const,lesson:null};
+  return {status:"ready" as const,lesson:data??null};
+}
 const DAILY_LIMIT = 24;
 
 const ATTENDANCE_SCAN_LIMIT = 96;
@@ -222,10 +233,11 @@ async function dailyUpcoming(db: Db, teacherId: string, scope: DashboardScope, r
 export async function teacherDashboardSummary(db: Db, teacherId: string, requested?: string | null, date?: string, homeworkAfter?: string, includeCloseReview = false, includeRatingFreshness = false, upcomingAfter?:string) {
   const scope = await dashboardScope(db, teacherId, requested);
   if (date === undefined) return dashboardSummary(db, teacherId, scope);
-  const [summary, daily] = await Promise.all([
+  const [summary, daily, nextScheduled] = await Promise.all([
     dashboardSummary(db, teacherId, scope), dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness, upcomingAfter),
+    nextScheduledLesson(db,teacherId,scope),
   ]);
-  return { ...summary, daily };
+  return { ...summary, daily, nextScheduled };
 }
 
 async function dashboardStudents(db: Db, teacherId: string, studentIds: Set<string> | null) {
@@ -251,16 +263,17 @@ export async function teacherDashboardPageModel(db: Db, teacherId: string, date?
   const sessions = () => db.from("teaching_sessions")
     .select("id,title,starts_at,duration_minutes").eq("teacher_id", teacherId).match(workplaceMatch(scope));
   const now = scope.now.toISOString();
-  const [summary, students, upcoming, recent, teacher, daily] = await Promise.all([
+  const [summary, students, upcoming, recent, teacher, daily, nextScheduled] = await Promise.all([
     dashboardSummary(db, teacherId, scope),
     dashboardStudents(db, teacherId, scope.studentIds),
     sessions().gte("starts_at", now).order("starts_at").limit(6),
     sessions().lt("starts_at", now).order("starts_at", { ascending: false }).limit(5),
     db.from("teachers").select("display_name").eq("id", teacherId).maybeSingle(),
     dailyUpcoming(db, teacherId, scope, date, homeworkAfter, includeCloseReview, includeRatingFreshness, upcomingAfter).catch(() => null),
+    nextScheduledLesson(db,teacherId,scope),
   ]);
   if (upcoming.error || recent.error || teacher.error) throw new TeacherOverviewError(500, "Dashboard unavailable");
-  return { summary, students, upcoming: upcoming.data, recent: recent.data, teacher: teacher.data, daily };
+  return { summary, students, upcoming: upcoming.data, recent: recent.data, teacher: teacher.data, daily, nextScheduled };
 }
 
 export async function teacherNotificationsList(db: Db, teacherId: string) {

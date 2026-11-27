@@ -50,9 +50,9 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
   const record=participant.students as unknown as {name:string}|{name:string}[]|null;
   return {id:participant.student_id,name:(Array.isArray(record)?record[0]:record)?.name??common("unknown")};
  });
- return <article className="max-w-4xl mx-auto min-w-0 text-[15px] leading-relaxed space-y-5">
+ return <article className="max-w-4xl min-w-0 text-base leading-relaxed space-y-5">
   <Link href="/coaching" className="inline-flex min-h-11 items-center text-primary">{nav("lessons")}</Link>
-  <header className="rounded-xl border border-border bg-surface p-5 space-y-3">
+  <header className="border-b border-border pb-5 space-y-3">
    <div className="flex flex-wrap gap-2 items-start justify-between">
     <h1 className="text-2xl font-semibold break-words"><bdi dir="auto">{lesson.title}</bdi></h1>
     <span className="rounded-lg border border-border px-3 py-1 text-sm">{lessonStatus}</span>
@@ -72,14 +72,14 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
     <Link href={scheduleHref} className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-primary">{c("notes")}</Link>
    </div>
   </header>
-  <section aria-label={t("sessionAttendance")} className="rounded-xl border border-border bg-surface p-4 sm:p-5 space-y-3">
+  <section aria-label={t("sessionAttendance")} className="border-b border-border pb-5 space-y-3">
    <h2 className="text-lg font-semibold">{t("sessionAttendance")}</h2>
    {!lesson.participants?.length?<p className="text-muted">{t("noParticipants")}</p>:<ul className="space-y-2">
     {lesson.participants.map(participant=>{
      const record=participant.students as unknown as {name:string}|{name:string}[]|null;
      const name=(Array.isArray(record)?record[0]:record)?.name??common("unknown");
      const decision=decisions.get(participant.student_id);
-     return <li key={participant.student_id} className="rounded-lg border border-border bg-background p-3 space-y-2">
+     return <li key={participant.student_id} className="border-b border-border py-3 space-y-2">
       <div className="flex flex-wrap gap-2 justify-between items-center">
        <Link href={"/students/"+participant.student_id} className="font-semibold text-primary"><bdi dir="auto">{name}</bdi></Link>
        <span className="rounded-md border border-border px-2 py-1 text-sm">{status(decision?.status??"unmarked")}</span>
@@ -92,7 +92,7 @@ export default async function LessonDetailPage({params}:{params:Promise<{id:stri
     })}
    </ul>}
   </section>
-  <section className="rounded-xl border border-border bg-surface p-4 sm:p-5 space-y-2">
+  <section className="border-b border-border pb-5 space-y-2">
    <h2 className="text-lg font-semibold">{t("sharedNote")}</h2>
    <p className="whitespace-pre-wrap break-words" dir="auto">{lesson.lesson_note||common("unknown")}</p>
    <Link href={scheduleHref} className="inline-flex min-h-11 items-center text-primary underline">{common("edit")}{" · "}{c("notes")}</Link>

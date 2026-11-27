@@ -14,7 +14,7 @@
 .ccp-record-meta { font-size:13px; color:var(--color-muted); line-height:1.5; }
 .ccp-record-section { border-block-start:1px solid var(--color-border-subtle); padding-block:18px; margin-block-start:14px; }
 .ccp-record-section h3 { font-weight:600; font-size:14px; margin-block-end:10px; }
-.ccp-record-prose { line-height:1.65; font-size:14px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.ccp-record-prose { line-height:1.65; font-size:16px; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ccp-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:16px; margin-block:20px; }
 .ccp-metrics dt { font-size:12px; color:var(--color-muted); }
 .ccp-metrics dd:not(.ccp-record-meta) { font-size:23px; font-weight:650; font-variant-numeric:tabular-nums; }

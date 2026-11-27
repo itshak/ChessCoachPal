@@ -28,7 +28,8 @@ export function FocusedPage({children,className=""}:{children:ReactNode;classNam
  return <div className={`ccp-focused-page ${className}`}>{children}</div>;
 }
 export function PageHeading({title,actions,hideTitleOnMobile=false}:{title:string;actions?:ReactNode;hideTitleOnMobile?:boolean}){
- return <header className="ccp-page-heading"><h1 className={hideTitleOnMobile?"ccp-mobile-sr-only":undefined}>{title}</h1>{actions&&<div className="ccp-context-actions">{actions}</div>}</header>;
+ const headingClass=hideTitleOnMobile?"ccp-mobile-sr-only":undefined;
+ return <header className="ccp-page-heading"><h1 className={headingClass}>{title}</h1>{actions&&<div className="ccp-context-actions">{actions}</div>}</header>;
 }
 export function RecordTitle({title,subtitle,actions}:{title:ReactNode;subtitle?:ReactNode;actions?:ReactNode}){
  return <header className="ccp-record-title"><div><h2>{title}</h2>{subtitle&&<div className="ccp-record-meta">{subtitle}</div>}</div>{actions&&<div className="ccp-context-actions">{actions}</div>}</header>;

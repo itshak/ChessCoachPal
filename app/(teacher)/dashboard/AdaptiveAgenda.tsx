@@ -17,6 +17,7 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
  const rows=model.days.flatMap(day=>day.rows);
  const visibleNext=model.next&&rows.some(row=>row.id===model.next?.id);
  const incomplete=model.days.some(day=>day.status!=="ready"||day.nextAfter);
+ const selectedCurrent="true" as const;
  const row=(session:AgendaRow,withDate=false)=><li key={session.id} data-session-id={session.id} data-next-lesson={session.id===model.next?.id}
   className={"flex flex-wrap items-start gap-x-4 gap-y-1 border-b border-border py-3 min-w-0 "+(session.id===model.next?.id?"border-s-2 border-s-primary ps-3":"")+(selectedId===session.id?" bg-primary/5":"")}>
   <time dateTime={session.starts_at} className="font-medium tabular-nums shrink-0">
@@ -30,7 +31,7 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
     {w.localTime}{": "}<bdi>{new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:session.sessionTimeZone}).format(new Date(session.starts_at))}{" · "}{session.sessionTimeZone}</bdi>
    </p>}
   </div>
-  <Link href={agendaHref(model.start,session.id)} aria-current={selectedId===session.id?"true":undefined}
+  <Link href={agendaHref(model.start,session.id)} aria-current={selectedId===session.id?selectedCurrent:undefined}
    className="text-primary underline underline-offset-2 py-1" prefetch={false}>{t("dailyPrepareOpen",{title:session.title})}</Link>
  </li>;
  return <div className="space-y-4 min-w-0" data-home-agenda>
@@ -40,7 +41,7 @@ export async function AdaptiveAgenda({model,locale,selectedId}:{model:HomeAgenda
   </div>
   <p className="text-muted">{t("dailyZone",{zone:model.timeZone})}</p>
   {!visibleNext&&model.next&&<ul aria-label={w.next}>{row(model.next,true)}</ul>}
-  {!model.next&&<p role="status">{model.futureComplete?w.noUpcoming:w.nextUnknown}</p>}
+  {!model.next&&<p role="status">{model.nextVerified?w.noUpcoming:w.nextUnknown}</p>}
   <div className="flex flex-wrap gap-2 items-center">
    <span className="font-medium">{dateLabel(model.start)}{" – "}{dateLabel(model.end)}</span>
    {model.start>model.today&&<Link href={agendaHref(addDays(model.start,-7)<model.today?model.today:addDays(model.start,-7))} className="text-primary underline">{w.previousWeek}</Link>}

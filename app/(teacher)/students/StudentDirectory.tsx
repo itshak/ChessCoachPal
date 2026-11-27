@@ -90,8 +90,7 @@ export async function StudentDirectory({
   return (
     <div>
       <div className="mb-6">
-        {selectedId ? <h2 className="text-lg font-bold">{t("title")}</h2> : <h1 className="text-2xl font-bold">{t("title")}</h1>}
-        {!selectedId && <p className="text-muted text-sm mt-1">{t("intro")}</p>}
+        {selectedId ? <h2 className="text-lg font-bold">{t("title")}</h2> : <h1 className="text-2xl font-bold ccp-mobile-sr-only">{t("title")}</h1>}
         <p className="text-xs text-muted mt-2">
           {showArchived ? (
             <Link href={filterHref(false)} className="text-primary font-semibold">

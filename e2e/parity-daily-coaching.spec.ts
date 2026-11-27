@@ -49,7 +49,7 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
       teacher_id,workplace_id:a,group_id:group,title:prefix+title,starts_at,duration_minutes:45,
       status:"scheduled",local_timezone:"UTC",...opts,
     });
-    await lesson("before midnight",date+"T04:00:00Z");
+    const earliest=await lesson("before midnight",date+"T04:00:00Z");
     const first=await lesson("first local instant",date+"T05:00:00Z");
     const middle1=await lesson("first morning",date+"T09:00:00Z");
     const middle2=await lesson("second morning",date+"T10:00:00Z");
@@ -82,6 +82,7 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     ]);
     const web=await read("?date="+date,{date});
     expect(web.daily).toMatchObject({date,timeZone:zone,limit:24,truncated:false});
+    expect(web.nextScheduled).toMatchObject({status:"ready",lesson:{id:earliest,workplace_id:a}});
     expect(ids(web)).toEqual([first,middle1,middle2,last]);
     for(const result of web.daily.sessions){
       expect(Object.keys(result).sort()).toEqual(["duration_minutes","id","starts_at","title","workplace_id"]);
@@ -92,7 +93,9 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     expect(ids(all)).toContain(other);
     expect(ids(all)).not.toContain(last);
     expect(ids(all)).not.toContain(foreignId);
-    expect(ids(await read("?workplaceId="+b+"&date="+date,{workplaceId:b,date}))).toEqual([other]);
+    const otherScope=await read("?workplaceId="+b+"&date="+date,{workplaceId:b,date});
+    expect(ids(otherScope)).toEqual([other]);
+    expect(otherScope.nextScheduled).toMatchObject({status:"ready",lesson:{id:other}});
     const fmt=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"});
     const oldDate=fmt.format(new Date(oldInstant));
     expect(ids(await read("?date="+oldDate,{date:oldDate}))).not.toContain(old);

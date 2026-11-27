@@ -127,13 +127,13 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const history=await getTranslations("lessonHistory");
 
   return (
-    <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(13rem,1fr)_minmax(0,2.3fr)]">
-      <aside className="hidden min-w-0 md:block md:self-start md:sticky md:top-4 md:max-h-[85vh] md:overflow-y-auto" aria-label={st("title")}>
+    <div className="grid min-w-0 gap-6 min-[800px]:grid-cols-[minmax(13rem,1fr)_minmax(0,2.3fr)]">
+      <aside className="hidden min-w-0 min-[800px]:block min-[800px]:self-start min-[800px]:sticky min-[800px]:top-24 min-[800px]:max-h-[80vh] min-[800px]:overflow-y-auto" aria-label={st("title")}>
         <StudentDirectory searchParams={Promise.resolve(directoryParams)} selectedId={id}/>
       </aside>
-      <article className="min-w-0 text-[15px] leading-relaxed">
+      <article className="min-w-0 text-base leading-relaxed">
       <Link href={backHref} className="inline-flex min-h-11 items-center gap-2 mb-3 text-muted hover:text-foreground"><span aria-hidden="true" className="inline-block rtl:rotate-180">←</span>{" "}{t("back")}</Link>
-      <header className="rounded-xl border border-border bg-surface p-4 sm:p-5 mb-5">
+      <header className="border-b border-border pb-5 mb-5">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
           <EditableStudentName studentId={id} initialName={student.name} />
@@ -156,12 +156,12 @@ export default async function StudentDetailPage({ params, searchParams }: { para
         </div>
       </div>
 
-      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border pt-4">
+      <dl className="ccp-metrics">
         {[
           {label:st("teacherStrength"),value:student.strength==null?common("unknown"):`${student.strength}/10`},
           {label:st("lichessRating"),value:student.lichess_rating??common("unknown")},
           {label:st("chesscomRating"),value:student.chesscom_rating??common("unknown")},
-        ].map(metric=><div key={metric.label} className="min-w-0 rounded-lg bg-background p-3"><dt className="text-sm text-muted">{metric.label}</dt><dd className="mt-1 text-2xl font-semibold tabular-nums">{metric.value}</dd></div>)}
+        ].map(metric=><div key={metric.label} className="min-w-0"><dt className="text-sm text-muted">{metric.label}</dt><dd className="mt-1 text-2xl font-semibold tabular-nums">{metric.value}</dd></div>)}
       </dl>
       </header>
       <nav aria-label={st("profile")} className="flex flex-wrap gap-2 mb-5">
