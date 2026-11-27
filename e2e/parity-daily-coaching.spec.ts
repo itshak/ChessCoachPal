@@ -151,6 +151,37 @@ test("PARITY:PARITY-daily-canonical-upcoming",async({page,request},testInfo)=>{
     expect((await signed.from("teaching_sessions").select("id").eq("slot_id",slotId)).data)
       .toEqual([{id:occurrence.data!.id}]);
 
+    const originalViewport=page.viewportSize();
+    await page.setViewportSize({width:1440,height:900});
+    await page.goto("/schedule?week="+date+"&view=week");
+    const attendanceButton=page.locator("#lesson-attendance-"+occurrence.data!.id);
+    await expect(attendanceButton).toBeVisible();
+    const weekUrl=page.url();
+    await attendanceButton.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(page.url()).toBe(weekUrl);
+    await page.screenshot({path:testInfo.outputPath("calendar-desktop.png"),fullPage:true});
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await page.setViewportSize({width:820,height:1100});
+    await page.screenshot({path:testInfo.outputPath("calendar-tablet.png"),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.goto("/schedule?week="+date);
+    const list=page.locator('.ccp-calendar-list[data-view="auto"]');
+    await expect(list).toBeVisible();
+    await attendanceButton.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(list).toBeHidden();
+    await page.screenshot({path:testInfo.outputPath("calendar-mobile-detail.png"),fullPage:true});
+    await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+    await expect(list).toBeVisible();
+    await expect(attendanceButton).toBeFocused();
+    await page.getByRole("navigation",{name:"Calendar view"}).getByRole("link",{name:"Month",exact:true}).click();
+    await expect(page).toHaveURL(/view=month/);
+    await page.locator('[data-calendar-date="'+date+'"] > a').first().click();
+    await expect(page).toHaveURL(/view=day/);
+    await expect(attendanceButton).toBeVisible();
+    if(originalViewport)await page.setViewportSize(originalViewport);
+
     const movedId=await lesson("moved actual",tomorrow+"T12:00:00Z",{group_id:null,student_id:pupil});
     const revision=await signed.from("teaching_sessions").select("updated_at").eq("id",movedId).single();
     expect(revision.error).toBeNull();
