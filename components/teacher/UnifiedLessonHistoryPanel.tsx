@@ -109,7 +109,7 @@ export function UnifiedLessonHistoryPanel({fixedStudentId,initialWorkplaceId}:{f
      <p className="text-sm text-muted">{t("minutes",{count:row.durationMinutes})} · {t("students",{count:row.studentIds.length})}</p>
      <p className="text-sm text-muted"><bdi dir="auto">{workplaceName(row.workplaceId)}</bdi></p>
      <p>{row.delivered?t("teachingEvidenced"):row.booked?t("bookedNotTaught"):t("cancelled")}</p>
-     <Link href={"/schedule?session="+encodeURIComponent(row.id)+"#lesson-notes-"+row.id} className="inline-flex min-h-11 items-center text-primary underline">{common("edit")}</Link>
+     <Link href={"/coaching/lessons/"+row.id} className="inline-flex min-h-11 items-center text-primary underline">{common("edit")}</Link>
     </li>)}
    </ol>
    {!visibleRows.length&&<p className="text-muted text-sm">{common("noResults")}</p>}
