@@ -1,0 +1,27 @@
+name: Isolated material library OpenSpec review
+on:
+  push:
+    branches: [review/material-library-openspec-validation]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      OPENSPEC_TELEMETRY: '0'
+      DO_NOT_TRACK: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 05b8ae5f119c9630d0190e52f1ff01940bdaa053
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate exact proposal
+        run: |
+          git rev-parse HEAD
+          npx --yes --package @fission-ai/openspec@1.17.0 openspec --version
+          npx --yes --package @fission-ai/openspec@1.17.0 openspec validate 2026-11-27-organize-teacher-owned-material-library --strict
+          git diff --exit-code
