@@ -32,6 +32,8 @@
   },
   "dashboard": {
     "dailyCloseOpen": "Record and complete {title}",
+    "dailyUpcomingNext": "Next lessons for this date",
+    "dailyUpcomingFirst": "Back to the first lessons",
     "dailyPrepareOpen": "Prepare {title}",
     "dailyPrepareHeading": "Lesson preparation",
     "dailyPrepareInvalid": "Choose a valid lesson.",
